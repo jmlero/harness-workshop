@@ -9,13 +9,14 @@ import { fileURLToPath } from "node:url";
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cli = path.join(repository, "bin", "harness-workshop.mjs");
 
-test("non-interactive init records stack-aware defaults without executing external tools", (context) => {
+test("non-interactive init installs canonical defaults without choosing a vendor", (context) => {
   const fixture = makeFixture(context);
-  const initialized = run(fixture, "init", "--yes", "--target", "codex");
+  const initialized = run(fixture, "init", "--yes");
   assert.equal(initialized.status, 0, initialized.stderr);
   assert.match(initialized.stdout, /Manual steps \(not executed\)/);
   const manifest = JSON.parse(read(fixture.project, ".harness-workshop/manifest.json"));
-  assert.deepEqual(manifest.targets, ["codex"]);
+  assert.equal(manifest.manifestVersion, 2);
+  assert.deepEqual(manifest.adapters, []);
   assert.deepEqual(manifest.components.map(({ id }) => id), [
     "block/tdd",
     "skill/audit-code",
@@ -26,24 +27,23 @@ test("non-interactive init records stack-aware defaults without executing extern
   assert.equal(fs.existsSync(path.join(fixture.project, ".claude")), false);
 });
 
-test("installs, reconciles, and removes portable content without changing user text", (context) => {
+test("portable content installs canonically without vendor files", (context) => {
   const fixture = makeFixture(context);
   fs.writeFileSync(path.join(fixture.project, "AGENTS.md"), "# Team instructions\n\nKeep this text.\n");
   fs.writeFileSync(path.join(fixture.project, "CLAUDE.md"), "# Claude notes\n");
 
-  const installed = run(fixture, "add", "block/tdd", "skill/audit-code", "--target", "claude,codex");
+  const installed = run(fixture, "add", "block/tdd", "skill/audit-code");
   assert.equal(installed.status, 0, installed.stderr);
+  const manifest = JSON.parse(read(fixture.project, ".harness-workshop/manifest.json"));
+  assert.deepEqual(manifest.adapters, []);
   const agents = read(fixture.project, "AGENTS.md");
   assert.match(agents, /Keep this text/);
   assert.equal(count(agents, "harness-workshop:start block/tdd"), 1);
 
   const claude = read(fixture.project, "CLAUDE.md");
-  assert.match(claude, /# Claude notes/);
-  assert.match(claude, /@AGENTS\.md/);
+  assert.equal(claude, "# Claude notes\n");
   assert.ok(fs.existsSync(path.join(fixture.project, ".agents", "skills", "audit-code", "SKILL.md")));
-  if (process.platform !== "win32") {
-    assert.equal(fs.lstatSync(path.join(fixture.project, ".claude", "skills", "audit-code")).isSymbolicLink(), true);
-  }
+  assert.equal(fs.existsSync(path.join(fixture.project, ".claude")), false);
 
   const planned = run(fixture, "plan");
   assert.equal(planned.status, 0, planned.stderr);
@@ -62,13 +62,30 @@ test("installs, reconciles, and removes portable content without changing user t
   assert.match(agentsAfter, /Keep this text/);
   assert.doesNotMatch(agentsAfter, /harness-workshop:start/);
   const claudeAfter = read(fixture.project, "CLAUDE.md");
-  assert.match(claudeAfter, /# Claude notes/);
-  assert.doesNotMatch(claudeAfter, /@AGENTS\.md/);
+  assert.equal(claudeAfter, "# Claude notes\n");
+});
+
+test("Claude adapter exposes canonical blocks and skills without duplicating them", (context) => {
+  const fixture = makeFixture(context);
+  fs.writeFileSync(path.join(fixture.project, "CLAUDE.md"), "# Claude notes\n");
+
+  const installed = run(fixture, "add", "block/tdd", "skill/audit-code", "--adapter", "claude");
+  assert.equal(installed.status, 0, installed.stderr);
+  assert.match(read(fixture.project, "CLAUDE.md"), /@AGENTS\.md/);
+  if (process.platform !== "win32") {
+    assert.equal(fs.lstatSync(path.join(fixture.project, ".claude", "skills", "audit-code")).isSymbolicLink(), true);
+  }
+
+  const disabled = run(fixture, "add", "block/tdd", "skill/audit-code", "--adapter", "none");
+  assert.equal(disabled.status, 0, disabled.stderr);
+  assert.equal(read(fixture.project, "CLAUDE.md"), "# Claude notes\n");
+  assert.equal(fs.existsSync(path.join(fixture.project, ".claude", "skills", "audit-code")), false);
+  assert.ok(fs.existsSync(path.join(fixture.project, ".agents", "skills", "audit-code", "SKILL.md")));
 });
 
 test("detects drift and refuses destructive removal unless forced", (context) => {
   const fixture = makeFixture(context);
-  const installed = run(fixture, "add", "skill/audit-code", "--target", "codex");
+  const installed = run(fixture, "add", "skill/audit-code");
   assert.equal(installed.status, 0, installed.stderr);
   const skill = path.join(fixture.project, ".agents", "skills", "audit-code", "SKILL.md");
   fs.appendFileSync(skill, "\nLocal edit.\n");
@@ -93,8 +110,9 @@ test("Claude marketplace edits preserve unrelated settings", (context) => {
   fs.writeFileSync(path.join(fixture.project, ".claude", "settings.json"), '{"permissions":{"allow":["Read"]}}\n');
   fs.writeFileSync(path.join(fixture.home, ".claude", "settings.json"), '{"theme":"dark"}\n');
 
-  const installed = run(fixture, "add", "plugin/github", "--target", "claude");
+  const installed = run(fixture, "add", "plugin/github");
   assert.equal(installed.status, 0, installed.stderr);
+  assert.deepEqual(JSON.parse(read(fixture.project, ".harness-workshop/manifest.json")).adapters, ["claude"]);
   const projectSettings = JSON.parse(read(fixture.project, ".claude/settings.json"));
   const userSettings = JSON.parse(read(fixture.home, ".claude/settings.json"));
   assert.deepEqual(projectSettings.permissions, { allow: ["Read"] });
@@ -111,7 +129,7 @@ test("Claude marketplace edits preserve unrelated settings", (context) => {
 
 test("installs and removes the opt-in Claude hook at user scope", (context) => {
   const fixture = makeFixture(context);
-  const installed = run(fixture, "add", "hook/slim-cli", "--target", "claude");
+  const installed = run(fixture, "add", "hook/slim-cli");
   assert.equal(installed.status, 0, installed.stderr);
   const hook = path.join(fixture.home, ".claude", "hooks", "harness-workshop", "slim-cli.sh");
   assert.ok(fs.existsSync(hook));
@@ -125,6 +143,37 @@ test("installs and removes the opt-in Claude hook at user scope", (context) => {
   assert.equal(fs.existsSync(hook), false);
   const after = JSON.parse(read(fixture.home, ".claude/settings.json"));
   assert.equal(after.hooks, undefined);
+});
+
+test("adapter-specific components reject an explicitly disabled adapter", (context) => {
+  const fixture = makeFixture(context);
+  const result = run(fixture, "add", "plugin/github", "--adapter", "none");
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /requires one of these adapters: claude/);
+  assert.equal(fs.existsSync(path.join(fixture.project, ".harness-workshop")), false);
+});
+
+test("legacy manifests and target flags migrate to optional adapters", (context) => {
+  const fixture = makeFixture(context);
+  fs.mkdirSync(path.join(fixture.project, ".harness-workshop"));
+  fs.writeFileSync(path.join(fixture.project, ".harness-workshop", "manifest.json"), `${JSON.stringify({
+    manifestVersion: 1,
+    targets: ["codex"],
+    components: [],
+  }, null, 2)}\n`);
+
+  const added = run(fixture, "add", "block/tdd");
+  assert.equal(added.status, 0, added.stderr);
+  const manifest = JSON.parse(read(fixture.project, ".harness-workshop/manifest.json"));
+  assert.equal(manifest.manifestVersion, 2);
+  assert.deepEqual(manifest.adapters, []);
+  assert.equal(Object.hasOwn(manifest, "targets"), false);
+  assert.equal(fs.existsSync(path.join(fixture.project, "CLAUDE.md")), false);
+
+  const legacyFlag = run(fixture, "add", "block/tdd", "--target", "claude,codex");
+  assert.equal(legacyFlag.status, 0, legacyFlag.stderr);
+  assert.deepEqual(JSON.parse(read(fixture.project, ".harness-workshop/manifest.json")).adapters, ["claude"]);
+  assert.ok(fs.existsSync(path.join(fixture.project, "CLAUDE.md")));
 });
 
 function makeFixture(context) {

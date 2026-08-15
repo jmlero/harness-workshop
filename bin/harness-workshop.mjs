@@ -2,7 +2,13 @@
 import os from "node:os";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { listComponents, requireComponent, suggested } from "../src/catalog.mjs";
+import {
+  availableWithAdapters,
+  isPortable,
+  listComponents,
+  requireComponent,
+  suggested,
+} from "../src/catalog.mjs";
 import { detectStack, humanSummary } from "../src/detect.mjs";
 import { formatPlan } from "../src/planner.mjs";
 import { reconcile } from "../src/reconcile.mjs";
@@ -13,6 +19,7 @@ import {
   readLock,
   readManifest,
   statePaths,
+  supportedAdapters,
 } from "../src/state.mjs";
 
 const version = "0.1.0";
@@ -44,7 +51,7 @@ async function main() {
       await doctor({ cwd, home, ...parsed });
       break;
     case "list":
-      list(parsed.flags.targets);
+      list(parsed.flags.adapters);
       break;
     default:
       throw new Error(`Unknown command: ${parsed.command}`);
@@ -57,11 +64,11 @@ async function initialize({ cwd, home, flags }) {
   const stack = humanSummary(detected);
   console.log(stack.length ? `Detected: ${stack.join(", ")}` : "Detected: no specific stack");
 
-  let targets = flags.targets ?? existing?.targets ?? ["claude", "codex"];
+  let adapters = flags.adapters ?? existing?.adapters ?? [];
   let defaultScope = flags.scope ?? "project";
   let selectedIds;
 
-  const candidates = listComponents().filter((component) => targets.some((target) => component.targets.includes(target)));
+  const candidates = listComponents().filter((component) => availableWithAdapters(component, adapters));
   const defaults = candidates.filter((component) => suggested(component, detected).pick).map(({ id }) => id);
 
   if (flags.yes) {
@@ -71,9 +78,9 @@ async function initialize({ cwd, home, flags }) {
     if (!process.stdin.isTTY) throw new Error("Interactive init needs a terminal; use --yes or add components explicitly");
     const prompt = readline.createInterface({ input, output });
     try {
-      targets = await chooseTargets(prompt, targets);
+      adapters = await chooseAdapters(prompt, adapters);
       defaultScope = flags.scope ?? await chooseScope(prompt, defaultScope);
-      const filtered = listComponents().filter((component) => targets.some((target) => component.targets.includes(target)));
+      const filtered = listComponents().filter((component) => availableWithAdapters(component, adapters));
       selectedIds = await chooseComponents(prompt, filtered, detected);
     } finally {
       prompt.close();
@@ -90,7 +97,7 @@ async function initialize({ cwd, home, flags }) {
   }
   const manifest = normalizeManifest({
     ...(existing ?? emptyManifest()),
-    targets,
+    adapters,
     components: [...byId.values()],
   });
   await applyDesired({ cwd, home, manifest, flags, writeManifest: true });
@@ -99,10 +106,18 @@ async function initialize({ cwd, home, flags }) {
 async function add({ cwd, home, flags, values }) {
   if (!values.length) throw new Error("Usage: harness-workshop add <component> [component...]");
   const existing = readManifest(cwd);
-  const targets = flags.targets ?? existing?.targets ?? ["claude", "codex"];
+  const components = values.map((id) => requireComponent(id));
+  const adapters = flags.adapters ?? [...(existing?.adapters ?? [])];
+  if (flags.adapters === null) {
+    for (const component of components) {
+      for (const adapter of component.adapters ?? []) {
+        if (!adapters.includes(adapter)) adapters.push(adapter);
+      }
+    }
+  }
   const byId = new Map((existing?.components ?? []).map((selection) => [selection.id, selection]));
-  for (const id of values) {
-    const component = requireComponent(id);
+  for (const component of components) {
+    const { id } = component;
     byId.set(id, {
       id,
       scope: flags.scope ?? byId.get(id)?.scope ?? componentScope(component, "project"),
@@ -110,7 +125,7 @@ async function add({ cwd, home, flags, values }) {
   }
   const manifest = normalizeManifest({
     ...(existing ?? emptyManifest()),
-    targets,
+    adapters,
     components: [...byId.values()],
   });
   await applyDesired({ cwd, home, manifest, flags, writeManifest: true });
@@ -161,11 +176,12 @@ async function doctor({ cwd, home, flags }) {
   process.exitCode = 1;
 }
 
-function list(targets) {
-  const components = listComponents().filter((component) => !targets
-    || targets.some((target) => component.targets.includes(target)));
+function list(adapters) {
+  const components = listComponents().filter((component) => adapters === null
+    || availableWithAdapters(component, adapters));
   for (const component of components) {
-    console.log(`${component.id.padEnd(28)} ${component.targets.join(",").padEnd(13)} ${component.description}`);
+    const availability = isPortable(component) ? "portable" : component.adapters.join(",");
+    console.log(`${component.id.padEnd(28)} ${availability.padEnd(13)} ${component.description}`);
   }
 }
 
@@ -200,13 +216,11 @@ function componentScope(component, requested) {
   return component.scopes[0];
 }
 
-async function chooseTargets(prompt, defaults) {
-  const answer = await prompt.question(`Targets [${defaults.join(",")}]: `);
+async function chooseAdapters(prompt, defaults) {
+  const fallback = defaults.length ? defaults.join(",") : "none";
+  const answer = await prompt.question(`Optional adapters: none or ${supportedAdapters.join(",")} [${fallback}]: `);
   if (!answer.trim()) return defaults;
-  const targets = answer.split(",").map((value) => value.trim()).filter(Boolean);
-  const invalid = targets.filter((target) => !new Set(["claude", "codex"]).has(target));
-  if (invalid.length || !targets.length) throw new Error(`Invalid targets: ${answer}`);
-  return [...new Set(targets)];
+  return parseAdapters(answer);
 }
 
 async function chooseScope(prompt, fallback) {
@@ -239,7 +253,7 @@ function parseArguments(argv) {
     force: false,
     help: false,
     scope: null,
-    targets: null,
+    adapters: null,
     version: false,
     yes: false,
   };
@@ -253,12 +267,15 @@ function parseArguments(argv) {
     else if (value === "-y" || value === "--yes") flags.yes = true;
     else if (value === "--dry-run") flags.dryRun = true;
     else if (value === "--force") flags.force = true;
-    else if (value === "--scope" || value === "--target" || value === "--targets") {
+    else if (value === "--scope" || value === "--adapter" || value === "--adapters"
+      || value === "--target" || value === "--targets") {
       const next = argv[index + 1];
       if (!next || next.startsWith("-")) throw new Error(`${value} requires a value`);
       index += 1;
       setValueFlag(flags, value, next);
     } else if (value.startsWith("--scope=")) setValueFlag(flags, "--scope", value.slice(8));
+    else if (value.startsWith("--adapter=")) setValueFlag(flags, "--adapter", value.slice(10));
+    else if (value.startsWith("--adapters=")) setValueFlag(flags, "--adapters", value.slice(11));
     else if (value.startsWith("--target=")) setValueFlag(flags, "--target", value.slice(9));
     else if (value.startsWith("--targets=")) setValueFlag(flags, "--targets", value.slice(10));
     else if (value.startsWith("-")) throw new Error(`Unknown flag: ${value}`);
@@ -275,33 +292,51 @@ function setValueFlag(flags, name, value) {
     flags.scope = value;
     return;
   }
+  flags.adapters = name === "--target" || name === "--targets"
+    ? parseLegacyTargets(value)
+    : parseAdapters(value);
+}
+
+function parseAdapters(value) {
+  if (value.trim() === "none") return [];
+  const adapters = value.split(",").map((adapter) => adapter.trim()).filter(Boolean);
+  if (!adapters.length || adapters.some((adapter) => !supportedAdapters.includes(adapter))) {
+    throw new Error(`Invalid adapters: ${value}`);
+  }
+  return [...new Set(adapters)];
+}
+
+function parseLegacyTargets(value) {
   const targets = value.split(",").map((target) => target.trim()).filter(Boolean);
   if (!targets.length || targets.some((target) => !new Set(["claude", "codex"]).has(target))) {
-    throw new Error(`Invalid targets: ${value}`);
+    throw new Error(`Invalid legacy targets: ${value}`);
   }
-  flags.targets = [...new Set(targets)];
+  return targets.includes("claude") ? ["claude"] : [];
 }
 
 function printHelp() {
   console.log(`harness-workshop ${version}
 
 Usage:
-  harness-workshop init [--yes] [--target claude,codex]
-  harness-workshop add <component...> [--scope project|user]
+  harness-workshop init [--yes] [--adapter claude]
+  harness-workshop add <component...> [--scope project|user] [--adapter claude]
   harness-workshop plan
   harness-workshop remove <component...>
   harness-workshop update
   harness-workshop doctor
-  harness-workshop list [--target claude|codex]
+  harness-workshop list [--adapter claude|none]
 
 Options:
   -y, --yes       Use stack-aware defaults during init
   --dry-run       Print exact changes without writing
   --force         Replace drifted managed content
   --scope VALUE   Default project or user scope
-  --target VALUE  Comma-separated claude and/or codex targets
+  --adapter VALUE Optional vendor adapter: claude or none
   -h, --help      Show help
   --version       Show version
+
+Portable content installs canonically for every agent. The Claude adapter adds
+only Claude-specific bridges and integrations. Codex uses the canonical files.
 
 External tool commands are printed for review and never executed.`);
 }

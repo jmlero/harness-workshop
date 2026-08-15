@@ -21,6 +21,17 @@ export function loadCatalog() {
     if (!component.id.startsWith(`${component.kind}/`)) {
       throw new Error(`Catalog kind and ID disagree: ${component.id}`);
     }
+    if (Object.hasOwn(component, "targets")) {
+      throw new Error(`Catalog component uses legacy target metadata: ${component.id}`);
+    }
+    if (component.adapters && (!Array.isArray(component.adapters)
+      || !component.adapters.length
+      || component.adapters.some((adapter) => adapter !== "claude"))) {
+      throw new Error(`Invalid adapters for catalog component: ${component.id}`);
+    }
+    if (new Set(["hook", "plugin"]).has(component.kind) && !component.adapters) {
+      throw new Error(`Adapter-specific component must declare adapters: ${component.id}`);
+    }
     ids.add(component.id);
   }
 
@@ -30,6 +41,15 @@ export function loadCatalog() {
 
 export function listComponents() {
   return loadCatalog().components;
+}
+
+export function isPortable(component) {
+  return !component.adapters?.length;
+}
+
+export function availableWithAdapters(component, adapters) {
+  return isPortable(component)
+    || component.adapters.some((adapter) => adapters.includes(adapter));
 }
 
 export function getComponent(id) {

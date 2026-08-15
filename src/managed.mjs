@@ -17,7 +17,10 @@ export function upsertManagedBlock(document, component, content) {
 export function removeManagedBlock(document, id) {
   const range = findManagedRange(document, id);
   if (!range) return document;
-  const result = `${document.slice(0, range.start)}${document.slice(range.end)}`;
+  const before = document.slice(0, range.start);
+  const after = document.slice(range.end);
+  if (before.trim() && !after.trim()) return `${before.trimEnd()}\n`;
+  const result = `${before}${after}`;
   return result.trim() ? result : "";
 }
 

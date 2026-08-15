@@ -1,6 +1,6 @@
 {
   "$schema": "../schemas/catalog.schema.json",
-  "catalogVersion": 1,
+  "catalogVersion": 2,
   "components": [
     {
       "id": "block/tdd",
@@ -9,7 +9,6 @@
       "name": "Test-driven development",
       "category": "Development methodology",
       "description": "A compact Red-Green-Refactor agreement managed in AGENTS.md.",
-      "targets": ["claude", "codex"],
       "scopes": ["project"],
       "content": { "kind": "bundled", "path": "blocks/tdd.md" },
       "context": { "loading": "always", "estimatedTokens": 120 },
@@ -22,7 +21,6 @@
       "name": "Production readiness audit",
       "category": "Code quality",
       "description": "Audit security, errors, validation, persistence, infrastructure, tests, and dependencies before release.",
-      "targets": ["claude", "codex"],
       "scopes": ["project", "user"],
       "content": { "kind": "bundled", "path": "skills/audit-code/SKILL.md" },
       "context": { "loading": "on-demand", "estimatedTokens": 650 },
@@ -35,7 +33,6 @@
       "name": "Documentation audit",
       "category": "Code quality",
       "description": "Audit documentation for accuracy, staleness, duplication, broken references, and unnecessary context cost.",
-      "targets": ["claude", "codex"],
       "scopes": ["project", "user"],
       "content": { "kind": "bundled", "path": "skills/audit-docs/SKILL.md" },
       "context": { "loading": "on-demand", "estimatedTokens": 600 },
@@ -48,7 +45,6 @@
       "name": "Pull request review",
       "category": "Code quality",
       "description": "Review a pull request for correctness, security, tests, compatibility, and project conventions.",
-      "targets": ["claude", "codex"],
       "scopes": ["project", "user"],
       "content": { "kind": "bundled", "path": "skills/review-pr/SKILL.md" },
       "context": { "loading": "on-demand", "estimatedTokens": 550 },
@@ -61,7 +57,7 @@
       "name": "Slim CLI output",
       "category": "Operations",
       "description": "Claude-only PreToolUse hook that adds safe quiet flags without truncating diagnostics or changing command semantics.",
-      "targets": ["claude"],
+      "adapters": ["claude"],
       "scopes": ["project", "user"],
       "recommendedScope": "user",
       "content": { "kind": "bundled", "path": "../adapters/claude/hooks/slim-cli/slim-cli.sh" },
@@ -74,7 +70,7 @@
       "name": "Frontend design",
       "category": "Anthropic",
       "description": "Official Claude plugin for production-grade frontend design.",
-      "targets": ["claude"],
+      "adapters": ["claude"],
       "scopes": ["project", "user"],
       "adapter": { "claude": { "pluginId": "frontend-design", "marketplace": { "name": "claude-plugins-official", "repo": "anthropics/claude-plugins-official" } } },
       "suggest": { "when": ["hasReact", "hasNextJs", "hasVue", "hasSvelte"], "reason": "frontend framework detected" }
@@ -86,7 +82,7 @@
       "name": "TypeScript LSP",
       "category": "Anthropic",
       "description": "Official Claude TypeScript language-server integration.",
-      "targets": ["claude"],
+      "adapters": ["claude"],
       "scopes": ["project", "user"],
       "recommendedScope": "user",
       "adapter": { "claude": { "pluginId": "typescript-lsp", "marketplace": { "name": "claude-plugins-official", "repo": "anthropics/claude-plugins-official" } } },
@@ -99,7 +95,7 @@
       "name": "Pyright LSP",
       "category": "Anthropic",
       "description": "Official Claude Python type-checking integration.",
-      "targets": ["claude"],
+      "adapters": ["claude"],
       "scopes": ["project", "user"],
       "recommendedScope": "user",
       "adapter": { "claude": { "pluginId": "pyright-lsp", "marketplace": { "name": "claude-plugins-official", "repo": "anthropics/claude-plugins-official" } } },
@@ -112,7 +108,7 @@
       "name": "GitHub",
       "category": "Anthropic",
       "description": "Official Claude integration for GitHub issues, pull requests, and actions.",
-      "targets": ["claude"],
+      "adapters": ["claude"],
       "scopes": ["project", "user"],
       "adapter": { "claude": { "pluginId": "github", "marketplace": { "name": "claude-plugins-official", "repo": "anthropics/claude-plugins-official" } } },
       "suggest": { "when": ["isGitHubRepo"], "reason": "GitHub remote detected" }
@@ -124,7 +120,7 @@
       "name": "HashiCorp Terraform skills",
       "category": "Community",
       "description": "HashiCorp skills for HCL, Stacks, modules, and provider development.",
-      "targets": ["claude"],
+      "adapters": ["claude"],
       "scopes": ["project", "user"],
       "adapter": { "claude": { "pluginId": "terraform", "marketplace": { "name": "hashicorp", "repo": "hashicorp/agent-skills" } } }
     },
@@ -135,7 +131,6 @@
       "name": "Terraform skill",
       "category": "Community",
       "description": "Portable Terraform and OpenTofu module, testing, CI/CD, and security guidance.",
-      "targets": ["claude", "codex"],
       "scopes": ["project", "user"],
       "content": {
         "kind": "remote",
@@ -154,7 +149,7 @@
       "name": "Superpowers",
       "category": "Community",
       "description": "Community methodology skills for TDD, debugging, planning, and verification.",
-      "targets": ["claude"],
+      "adapters": ["claude"],
       "scopes": ["project", "user"],
       "adapter": { "claude": { "pluginId": "superpowers", "marketplace": { "name": "obra", "repo": "obra/superpowers" } } }
     },
@@ -165,7 +160,7 @@
       "name": "Codex for Claude",
       "category": "Community",
       "description": "Claude plugin that exposes the Codex CLI as a tool.",
-      "targets": ["claude"],
+      "adapters": ["claude"],
       "scopes": ["project", "user"],
       "adapter": { "claude": { "pluginId": "codex", "marketplace": { "name": "openai-codex", "repo": "openai/codex-plugin-cc" } } }
     },
@@ -176,7 +171,6 @@
       "name": "Code Review Graph",
       "category": "External tool",
       "description": "Code knowledge graph with blast-radius analysis and incremental indexing.",
-      "targets": ["claude", "codex"],
       "scopes": ["user"],
       "manual": { "install": "pipx install code-review-graph && code-review-graph install", "postInstall": "code-review-graph build" },
       "suggest": { "when": "always", "reason": "useful on unfamiliar or large repositories" }
@@ -188,7 +182,6 @@
       "name": "CodeGraph",
       "category": "External tool",
       "description": "Node-based code knowledge graph alternative.",
-      "targets": ["claude", "codex"],
       "scopes": ["user"],
       "manual": { "install": "npx @colbymchenry/codegraph", "postInstall": "codegraph init" }
     },
@@ -199,7 +192,6 @@
       "name": "Context7",
       "category": "External tool",
       "description": "Fetch current version-specific library documentation.",
-      "targets": ["claude", "codex"],
       "scopes": ["user"],
       "manual": { "install": "npx ctx7@latest setup" },
       "suggest": { "when": "always", "reason": "reduces stale API guidance" }
@@ -211,7 +203,6 @@
       "name": "Backlog.md",
       "category": "External tool",
       "description": "Markdown-native task manager and Kanban UI for Git repositories.",
-      "targets": ["claude", "codex"],
       "scopes": ["user"],
       "manual": { "install": "npm install --global backlog.md", "postInstall": "backlog init" }
     },
@@ -222,7 +213,6 @@
       "name": "FastAPI",
       "category": "Framework skill",
       "description": "Official FastAPI guidance for typing, dependency injection, async behavior, and streaming.",
-      "targets": ["claude", "codex"],
       "scopes": ["project", "user"],
       "content": {
         "kind": "remote",

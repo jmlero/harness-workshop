@@ -50,6 +50,12 @@ version.
 defined once. Thin adapters translate capabilities into the conventions of
 Claude Code, Codex, and other supported agents.
 
+Portable content does not declare vendor targets. It installs canonically and
+is available to every agent that reads the standard files. Adapters are
+optional, explicit edges used only when an agent needs a bridge, alternate
+layout, or native integration. Codex consumes `AGENTS.md` and `.agents/skills`
+directly; the Claude adapter exposes those files through Claude conventions.
+
 Portability does not mean pretending every agent has the same features:
 
 - instruction blocks can usually be shared directly;
@@ -80,8 +86,9 @@ detection and user choice.
 ### Declarative and repeatable
 
 A project records what `harness-workshop` installed in a small manifest and
-lockfile. Every component has a stable ID, version, source, supported targets,
-and integrity information.
+lockfile. Every component has a stable ID, version, source, and integrity
+information. Portable is the default; vendor-specific components declare their
+supported adapters.
 
 Operations must be:
 
@@ -123,9 +130,9 @@ The CLI should make common workflows obvious:
 ```text
 harness-workshop init                 # inspect the project and propose a profile
 harness-workshop add block/tdd        # manage a block in AGENTS.md
-harness-workshop add skill/review-pr  # install through the active agent adapters
+harness-workshop add skill/review-pr  # install once in the canonical skill path
 harness-workshop add agent/reviewer   # add a reusable specialist where supported
-harness-workshop add hook/slim-cli    # install an explicit target-specific hook
+harness-workshop add hook/slim-cli    # install an explicit adapter-specific hook
 harness-workshop plan                 # preview all changes
 harness-workshop remove <component>   # cleanly undo a managed installation
 harness-workshop update               # update pinned components with a visible diff
@@ -160,8 +167,8 @@ and the opt-in `slim-cli` hook. Its core maturity priorities remain:
 1. A package format and local catalog for instruction blocks and skills.
 2. Idempotent `AGENTS.md` management with preview, removal, updates, and drift
    detection.
-3. Claude Code and Codex adapters that install the same portable packages where
-   possible.
+3. Canonical files that Codex can consume directly, plus a Claude adapter that
+   exposes the same portable packages without maintaining separate copies.
 
 The carried-over hook and vendor integrations must remain isolated adapters;
 they do not justify adding new hooks, profiles, or agent definitions before the
@@ -202,7 +209,7 @@ portable content and installation model are stable.
 - running the same installation twice produces no changes;
 - every managed component can be updated or removed cleanly;
 - projects pay context cost only for guidance relevant to the current task;
-- one portable component works through at least two agent adapters without
+- one portable component works in at least two supported agents without
   maintaining separate copies of its core instructions; and
 - compact skills match or outperform their reference versions in repeatable
   task evaluations while using materially less context.

@@ -14,8 +14,10 @@ export function statePaths(cwd) {
   };
 }
 
-export function emptyManifest(targets = ["claude", "codex"]) {
-  return { manifestVersion: 1, targets, components: [] };
+export const supportedAdapters = ["claude"];
+
+export function emptyManifest(adapters = []) {
+  return { manifestVersion: 2, adapters, components: [] };
 }
 
 export function emptyLock() {
@@ -43,14 +45,13 @@ export function readLock(cwd) {
 }
 
 export function validateManifest(manifest) {
-  if (manifest.manifestVersion !== 1) throw new Error("Unsupported manifest version");
-  if (!Array.isArray(manifest.targets) || !manifest.targets.length) {
-    throw new Error("Manifest must select at least one target");
-  }
-  for (const target of manifest.targets) {
-    if (!new Set(["claude", "codex"]).has(target)) {
-      throw new Error(`Unsupported target in manifest: ${target}`);
-    }
+  if (!new Set([1, 2]).has(manifest.manifestVersion)) throw new Error("Unsupported manifest version");
+  const adapters = manifest.manifestVersion === 1
+    ? migrateTargets(manifest.targets)
+    : manifest.adapters;
+  if (!Array.isArray(adapters)) throw new Error("Manifest adapters must be an array");
+  for (const adapter of adapters) {
+    if (!supportedAdapters.includes(adapter)) throw new Error(`Unsupported adapter in manifest: ${adapter}`);
   }
   if (!Array.isArray(manifest.components)) throw new Error("Manifest components must be an array");
   const ids = new Set();
@@ -63,17 +64,30 @@ export function validateManifest(manifest) {
     }
     ids.add(component.id);
   }
-  return normalizeManifest(manifest);
+  return normalizeManifest({ ...manifest, adapters });
 }
 
 export function normalizeManifest(manifest) {
+  const adapters = manifest.adapters ?? migrateTargets(manifest.targets);
   return {
-    manifestVersion: 1,
-    targets: [...new Set(manifest.targets)].sort(),
+    manifestVersion: 2,
+    adapters: [...new Set(adapters)].sort(),
     components: [...manifest.components]
       .map(({ id, scope }) => ({ id, scope }))
       .sort((left, right) => left.id.localeCompare(right.id)),
   };
+}
+
+function migrateTargets(targets) {
+  if (!Array.isArray(targets) || !targets.length) {
+    throw new Error("Legacy manifest must select at least one target");
+  }
+  for (const target of targets) {
+    if (!new Set(["claude", "codex"]).has(target)) {
+      throw new Error(`Unsupported target in legacy manifest: ${target}`);
+    }
+  }
+  return targets.includes("claude") ? ["claude"] : [];
 }
 
 export function jsonDocument(value) {

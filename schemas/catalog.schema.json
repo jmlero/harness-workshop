@@ -5,21 +5,27 @@
   "type": "object",
   "required": ["catalogVersion", "components"],
   "properties": {
-    "catalogVersion": { "const": 1 },
+    "catalogVersion": { "const": 2 },
     "components": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "version", "kind", "name", "description", "targets", "scopes"],
+        "required": ["id", "version", "kind", "name", "description", "scopes"],
         "properties": {
           "id": { "type": "string", "pattern": "^(block|skill|hook|plugin|tool)/[a-z0-9][a-z0-9-]*$" },
           "version": { "type": "string" },
           "kind": { "enum": ["block", "skill", "hook", "plugin", "tool"] },
           "name": { "type": "string" },
           "description": { "type": "string" },
-          "targets": { "type": "array", "items": { "enum": ["claude", "codex"] }, "minItems": 1, "uniqueItems": true },
+          "adapters": { "type": "array", "items": { "enum": ["claude"] }, "minItems": 1, "uniqueItems": true },
           "scopes": { "type": "array", "items": { "enum": ["project", "user"] }, "minItems": 1, "uniqueItems": true }
-        }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "kind": { "enum": ["hook", "plugin"] } }, "required": ["kind"] },
+            "then": { "required": ["adapters"] }
+          }
+        ]
       }
     }
   }

@@ -37,12 +37,14 @@ export async function reconcile({
 
   for (const selection of manifest.components) {
     const component = requireComponent(selection.id);
-    validateSelection(component, selection, manifest.targets);
+    validateSelection(component, selection, manifest.adapters);
     const previous = previousLock.components[component.id];
     const entry = await installComponent({
       component,
       selection,
-      targets: manifest.targets.filter((target) => component.targets.includes(target)),
+      adapters: component.adapters
+        ? manifest.adapters.filter((adapter) => component.adapters.includes(adapter))
+        : manifest.adapters,
       previous,
       planner,
       claude,
@@ -66,14 +68,14 @@ export async function reconcile({
 }
 
 async function installComponent(context) {
-  const { component, selection, targets, previous } = context;
+  const { component, selection, adapters, previous } = context;
   const entry = {
     kind: component.kind,
     version: component.version,
     source: lockSource(component),
     metadataIntegrity: metadataIntegrity(component),
     scope: selection.scope,
-    targets,
+    adapters,
     files: [],
   };
 
@@ -132,7 +134,7 @@ function installBlock({ component, previous, planner, cwd, force }, entry, conte
   }));
 }
 
-function installSkill({ component, selection, targets, previous, planner, cwd, home }, entry, content) {
+function installSkill({ component, selection, adapters, previous, planner, cwd, home }, entry, content) {
   const name = component.id.slice("skill/".length);
   const root = selection.scope === "user" ? home : cwd;
   const canonicalDirectory = path.join(root, ".agents", "skills", name);
@@ -148,7 +150,7 @@ function installSkill({ component, selection, targets, previous, planner, cwd, h
     created: previousFile?.created ?? current.kind === "missing",
   }));
 
-  if (!targets.includes("claude")) return;
+  if (!adapters.includes("claude")) return;
   const claudeSkill = path.join(root, ".claude", "skills", name);
   const previousBridge = findFile(previous, claudeSkill, planner);
   if (process.platform === "win32") {
@@ -280,7 +282,7 @@ function removeFiles(files = [], planner) {
 }
 
 function reconcileClaudeBridge({ manifest, previousLock, nextLock, planner, cwd, force }) {
-  const needsBridge = manifest.targets.includes("claude")
+  const needsBridge = manifest.adapters.includes("claude")
     && manifest.components.some(({ id }) => getComponent(id)?.kind === "block");
   const previous = previousLock.bridges?.claudeAgents;
   const file = path.join(cwd, "CLAUDE.md");
@@ -358,12 +360,13 @@ function reconcileClaudeBridge({ manifest, previousLock, nextLock, planner, cwd,
   };
 }
 
-function validateSelection(component, selection, targets) {
+function validateSelection(component, selection, adapters) {
   if (!component.scopes.includes(selection.scope)) {
     throw new Error(`${component.id} does not support ${selection.scope} scope`);
   }
-  if (!targets.some((target) => component.targets.includes(target))) {
-    throw new Error(`${component.id} supports ${component.targets.join(", ")}, not the selected targets`);
+  if (component.adapters
+    && !adapters.some((adapter) => component.adapters.includes(adapter))) {
+    throw new Error(`${component.id} requires one of these adapters: ${component.adapters.join(", ")}`);
   }
 }
 

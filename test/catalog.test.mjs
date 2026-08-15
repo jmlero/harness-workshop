@@ -4,7 +4,9 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  availableWithAdapters,
   bundledContent,
+  isPortable,
   listComponents,
   lockedRemoteContent,
   remoteContent,
@@ -40,16 +42,24 @@ test("catalog contains every ported component with stable metadata", () => {
 
   for (const component of components) {
     assert.match(component.version, /^\d+\.\d+\.\d+$/);
-    assert.ok(component.targets.length);
     assert.ok(component.scopes.length);
+    assert.equal(Object.hasOwn(component, "targets"), false);
+    if (component.adapters) assert.deepEqual(component.adapters, ["claude"]);
     if (component.content?.kind === "bundled") assert.ok(bundledContent(component).length > 20);
   }
 });
 
-test("only portable content is offered to Codex", () => {
-  const codex = listComponents().filter(({ targets }) => targets.includes("codex"));
-  assert.ok(codex.some(({ id }) => id === "skill/audit-code"));
-  assert.ok(codex.every(({ kind }) => kind !== "plugin" && kind !== "hook"));
+test("portable components are vendor-neutral and adapters expose only compatible edges", () => {
+  const components = listComponents();
+  const portable = components.filter(isPortable);
+  const claude = components.filter((component) => availableWithAdapters(component, ["claude"]));
+
+  assert.ok(portable.some(({ id }) => id === "block/tdd"));
+  assert.ok(portable.some(({ id }) => id === "skill/audit-code"));
+  assert.ok(portable.every(({ kind }) => kind !== "plugin" && kind !== "hook"));
+  assert.ok(portable.every((component) => component.adapters === undefined));
+  assert.equal(claude.length, components.length);
+  assert.equal(availableWithAdapters(components.find(({ id }) => id === "plugin/github"), []), false);
 });
 
 test("remote skills are normalized before checksumming and installation", async (context) => {
