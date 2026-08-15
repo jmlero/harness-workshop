@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/jmlero/harness-workshop/main/schemas/catalog.schema.json",
+  "title": "harness-workshop catalog",
+  "type": "object",
+  "required": ["catalogVersion", "components"],
+  "properties": {
+    "catalogVersion": { "const": 1 },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "version", "kind", "name", "description", "targets", "scopes"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^(block|skill|hook|plugin|tool)/[a-z0-9][a-z0-9-]*$" },
+          "version": { "type": "string" },
+          "kind": { "enum": ["block", "skill", "hook", "plugin", "tool"] },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "targets": { "type": "array", "items": { "enum": ["claude", "codex"] }, "minItems": 1, "uniqueItems": true },
+          "scopes": { "type": "array", "items": { "enum": ["project", "user"] }, "minItems": 1, "uniqueItems": true }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "harness-workshop",
+  "version": "0.1.0",
+  "description": "Agent-agnostic CLI for portable project instructions, skills, hooks, and tools.",
+  "type": "module",
+  "bin": {
+    "harness-workshop": "./bin/harness-workshop.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check bin/harness-workshop.mjs && node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jmlero/harness-workshop"
+  },
+  "license": "Apache-2.0",
+  "files": [
+    ".claude-plugin/",
+    "adapters/",
+    "bin/",
+    "catalog/",
+    "schemas/",
+    "src/",
+    "LICENSE",
+    "README.md"
+  ]
+}

@@ -1,0 +1,393 @@
+import path from "node:path";
+import { ClaudeSettingsEditor, hookCommand } from "./adapters/claude.mjs";
+import {
+  bundledContent,
+  getComponent,
+  lockedRemoteContent,
+  metadataIntegrity,
+  requireComponent,
+  resolveRemoteContent,
+} from "./catalog.mjs";
+import { integrity, normalizeText } from "./integrity.mjs";
+import {
+  managedPayload,
+  removeClaudeBridge,
+  removeManagedBlock,
+  upsertClaudeBridge,
+  upsertManagedBlock,
+} from "./managed.mjs";
+import { ConflictError, Planner } from "./planner.mjs";
+import { portablePath, resolvePortablePath } from "./paths.mjs";
+
+const bridgePayload = normalizeText("@AGENTS.md\n");
+const bridgeIntegrity = integrity(bridgePayload);
+
+export async function reconcile({
+  cwd,
+  home,
+  manifest,
+  previousLock,
+  force = false,
+  refreshRemote = false,
+}) {
+  const planner = new Planner({ cwd, home, force });
+  const claude = new ClaudeSettingsEditor({ cwd, home });
+  const nextLock = { lockfileVersion: 1, components: {}, bridges: {} };
+  const desiredIds = new Set(manifest.components.map(({ id }) => id));
+
+  for (const selection of manifest.components) {
+    const component = requireComponent(selection.id);
+    validateSelection(component, selection, manifest.targets);
+    const previous = previousLock.components[component.id];
+    const entry = await installComponent({
+      component,
+      selection,
+      targets: manifest.targets.filter((target) => component.targets.includes(target)),
+      previous,
+      planner,
+      claude,
+      cwd,
+      home,
+      force,
+      refreshRemote,
+    });
+    removeStaleFiles(previous, entry, planner);
+    nextLock.components[component.id] = entry;
+  }
+
+  for (const [id, previous] of Object.entries(previousLock.components)) {
+    if (desiredIds.has(id)) continue;
+    uninstallComponent({ id, previous, component: getComponent(id), planner, claude, cwd, home, force });
+  }
+
+  reconcileClaudeBridge({ manifest, previousLock, nextLock, planner, cwd, home, force });
+  claude.flush(planner);
+  return { planner, lock: nextLock };
+}
+
+async function installComponent(context) {
+  const { component, selection, targets, previous } = context;
+  const entry = {
+    kind: component.kind,
+    version: component.version,
+    source: lockSource(component),
+    metadataIntegrity: metadataIntegrity(component),
+    scope: selection.scope,
+    targets,
+    files: [],
+  };
+
+  if (component.kind === "block") {
+    const content = bundledContent(component);
+    entry.integrity = integrity(content);
+    installBlock(context, entry, content);
+  } else if (component.kind === "skill") {
+    const resolved = await resolveSkillContent(context);
+    const content = resolved.content;
+    if (resolved.source) entry.source = resolved.source;
+    entry.integrity = integrity(content);
+    installSkill(context, entry, content);
+  } else if (component.kind === "hook") {
+    const content = bundledContent(component);
+    entry.integrity = integrity(content);
+    installHook(context, entry, content);
+  } else if (component.kind === "plugin") {
+    entry.integrity = entry.metadataIntegrity;
+    installPlugin(context, entry);
+  } else if (component.kind === "tool") {
+    entry.integrity = entry.metadataIntegrity;
+    entry.manual = component.manual;
+    context.planner.note(`${component.id}: ${component.manual.install}`);
+    if (component.manual.postInstall) {
+      context.planner.note(`${component.id} after install: ${component.manual.postInstall}`);
+    }
+  }
+
+  if (previous && previous.scope !== selection.scope && component.kind === "plugin") {
+    context.claude.disablePluginAdapter(previous.adapter, previous.scope);
+  }
+  return entry;
+}
+
+function installBlock({ component, previous, planner, cwd, force }, entry, content) {
+  const file = path.join(cwd, "AGENTS.md");
+  const current = planner.state(file);
+  if (!new Set(["missing", "file"]).has(current.kind)) {
+    throw new ConflictError(`Cannot manage ${planner.label(file)}: it is a ${current.kind}`);
+  }
+  const document = current.kind === "file" ? current.content : "";
+  const payload = managedPayload(document, component.id);
+  if (payload) {
+    const expected = previous?.integrity ?? entry.integrity;
+    if (integrity(payload) !== expected && !force) {
+      throw new ConflictError(`Managed block has local changes: ${component.id}`);
+    }
+  }
+  planner.write(file, upsertManagedBlock(document, component, content), { allowExisting: true });
+  const previousFile = findFile(previous, file, planner);
+  entry.files.push(fileRecord(file, "block", planner, {
+    id: component.id,
+    integrity: entry.integrity,
+    created: previousFile?.created ?? current.kind === "missing",
+  }));
+}
+
+function installSkill({ component, selection, targets, previous, planner, cwd, home }, entry, content) {
+  const name = component.id.slice("skill/".length);
+  const root = selection.scope === "user" ? home : cwd;
+  const canonicalDirectory = path.join(root, ".agents", "skills", name);
+  const canonical = path.join(canonicalDirectory, "SKILL.md");
+  const previousFile = findFile(previous, canonical, planner);
+  const current = planner.state(canonical);
+  planner.write(canonical, content, {
+    owned: Boolean(previousFile) || (current.kind === "file" && current.content === content),
+    expectedIntegrity: previousFile?.integrity,
+  });
+  entry.files.push(fileRecord(canonical, "file", planner, {
+    integrity: entry.integrity,
+    created: previousFile?.created ?? current.kind === "missing",
+  }));
+
+  if (!targets.includes("claude")) return;
+  const claudeSkill = path.join(root, ".claude", "skills", name);
+  const previousBridge = findFile(previous, claudeSkill, planner);
+  if (process.platform === "win32") {
+    const bridgeFile = path.join(claudeSkill, "SKILL.md");
+    const previousCopy = findFile(previous, bridgeFile, planner);
+    const copyState = planner.state(bridgeFile);
+    planner.write(bridgeFile, content, {
+      owned: Boolean(previousCopy) || (copyState.kind === "file" && copyState.content === content),
+      expectedIntegrity: previousCopy?.integrity,
+    });
+    entry.files.push(fileRecord(bridgeFile, "file", planner, {
+      integrity: entry.integrity,
+      created: previousCopy?.created ?? copyState.kind === "missing",
+      fallbackCopy: true,
+    }));
+  } else {
+    const target = path.relative(path.dirname(claudeSkill), canonicalDirectory);
+    const bridgeState = planner.state(claudeSkill);
+    planner.symlink(claudeSkill, target, {
+      linkType: "dir",
+      owned: Boolean(previousBridge) || (bridgeState.kind === "symlink" && bridgeState.target === target),
+      expectedTarget: previousBridge?.target,
+    });
+    entry.files.push(fileRecord(claudeSkill, "symlink", planner, {
+      target,
+      created: previousBridge?.created ?? bridgeState.kind === "missing",
+    }));
+  }
+}
+
+function installHook({ component, selection, previous, planner, claude, cwd, home }, entry, content) {
+  const root = selection.scope === "user" ? home : cwd;
+  const file = path.join(root, ".claude", "hooks", "harness-workshop", "slim-cli.sh");
+  const previousFile = findFile(previous, file, planner);
+  const current = planner.state(file);
+  planner.write(file, content, {
+    mode: 0o755,
+    owned: Boolean(previousFile) || (current.kind === "file" && current.content === content),
+    expectedIntegrity: previousFile?.integrity,
+  });
+  const command = hookCommand(selection.scope, { cwd, home });
+  if (previous && previous.scope !== selection.scope && previous.adapter?.claude?.command) {
+    claude.disableHook(previous.scope, previous.adapter.claude.command);
+  }
+  claude.enableHook(selection.scope, command);
+  entry.adapter = { claude: { command } };
+  entry.files.push(fileRecord(file, "file", planner, {
+    integrity: entry.integrity,
+    created: previousFile?.created ?? current.kind === "missing",
+    executable: true,
+  }));
+}
+
+function installPlugin({ component, selection, claude }, entry) {
+  claude.enablePlugin(component, selection.scope);
+  entry.adapter = component.adapter;
+}
+
+async function resolveSkillContent({ component, previous, planner, cwd, home, force, refreshRemote, selection }) {
+  if (component.content.kind === "bundled") return { content: bundledContent(component) };
+
+  const name = component.id.slice("skill/".length);
+  const root = selection.scope === "user" ? home : cwd;
+  const canonical = path.join(root, ".agents", "skills", name, "SKILL.md");
+  const current = planner.state(canonical);
+  if (previous && current.kind === "file" && integrity(current.content) !== previous.integrity && !force) {
+    throw new ConflictError(`Managed file has local changes: ${planner.label(canonical)}`);
+  }
+  if (!refreshRemote && previous && current.kind === "file") {
+    return { content: normalizeText(current.content), source: previous.source };
+  }
+  if (!refreshRemote && previous) {
+    const content = await lockedRemoteContent(component.id, previous.source);
+    if (integrity(content) !== previous.integrity) {
+      throw new ConflictError(`Pinned remote content failed its checksum: ${component.id}`);
+    }
+    return { content, source: previous.source };
+  }
+  return resolveRemoteContent(component);
+}
+
+function uninstallComponent({ id, previous, component, planner, claude, cwd, home, force }) {
+  if (previous.kind === "block") {
+    uninstallBlock(id, previous, planner, cwd, force);
+  } else {
+    removeFiles(previous.files, planner);
+  }
+
+  if (previous.kind === "hook" && previous.adapter?.claude?.command) {
+    claude.disableHook(previous.scope, previous.adapter.claude.command);
+  } else if (previous.kind === "plugin") {
+    if (previous.adapter) claude.disablePluginAdapter(previous.adapter, previous.scope);
+    else if (component) claude.disablePlugin(component, previous.scope);
+    else planner.note(`${id}: remove its Claude enabledPlugins entry manually; it is no longer in the catalog`);
+  }
+}
+
+function uninstallBlock(id, previous, planner, cwd, force) {
+  const file = path.join(cwd, "AGENTS.md");
+  const current = planner.state(file);
+  if (current.kind === "missing") return;
+  if (current.kind !== "file") throw new ConflictError(`Managed file changed type: ${planner.label(file)}`);
+  const payload = managedPayload(current.content, id);
+  if (!payload) return;
+  if (integrity(payload) !== previous.integrity && !force) {
+    throw new ConflictError(`Managed block has local changes: ${id}`);
+  }
+  const result = removeManagedBlock(current.content, id);
+  const record = previous.files?.find((candidate) => candidate.kind === "block");
+  if (!result && record?.created) planner.delete(file, { owned: true });
+  else planner.write(file, result, { allowExisting: true });
+}
+
+function removeStaleFiles(previous, next, planner) {
+  if (!previous?.files) return;
+  const desired = new Set(next.files.map(({ path: file }) => file));
+  removeFiles(previous.files.filter((file) => file.kind !== "block" && !desired.has(file.path)), planner);
+}
+
+function removeFiles(files = [], planner) {
+  for (const record of files) {
+    if (record.kind === "block") continue;
+    planner.delete(resolvePortablePath(record.path, planner), {
+      owned: true,
+      expectedIntegrity: record.integrity,
+      expectedTarget: record.target,
+    });
+  }
+}
+
+function reconcileClaudeBridge({ manifest, previousLock, nextLock, planner, cwd, force }) {
+  const needsBridge = manifest.targets.includes("claude")
+    && manifest.components.some(({ id }) => getComponent(id)?.kind === "block");
+  const previous = previousLock.bridges?.claudeAgents;
+  const file = path.join(cwd, "CLAUDE.md");
+
+  if (!needsBridge) {
+    if (previous?.managed === "symlink" && previous.owned) {
+      planner.delete(file, { owned: true, expectedTarget: previous.target });
+    } else if (previous?.managed === "block") {
+      const current = planner.state(file);
+      if (current.kind === "file") {
+        const payload = managedPayload(current.content, "bridge/agents-md");
+        if (payload && integrity(payload) !== bridgeIntegrity && !force) {
+          throw new ConflictError("Claude AGENTS.md bridge has local changes");
+        }
+        const result = removeClaudeBridge(current.content);
+        if (!result && previous.created) planner.delete(file, { owned: true });
+        else planner.write(file, result, { allowExisting: true });
+      }
+    }
+    return;
+  }
+
+  const current = planner.state(file);
+  if (previous?.managed === "symlink" && current.kind !== "missing" && current.kind !== "symlink" && !force) {
+    throw new ConflictError("Claude AGENTS.md bridge changed type");
+  }
+  if (previous?.managed === "block" && current.kind !== "missing" && current.kind !== "file" && !force) {
+    throw new ConflictError("Claude AGENTS.md bridge changed type");
+  }
+  if (current.kind === "symlink" && current.target === "AGENTS.md") {
+    nextLock.bridges.claudeAgents = {
+      path: portablePath(file, planner),
+      managed: "symlink",
+      target: "AGENTS.md",
+      owned: previous?.managed === "symlink" ? previous.owned : false,
+    };
+    return;
+  }
+
+  if (current.kind === "missing" && process.platform !== "win32") {
+    planner.symlink(file, "AGENTS.md", { linkType: "file", owned: Boolean(previous?.owned) });
+    nextLock.bridges.claudeAgents = {
+      path: portablePath(file, planner),
+      managed: "symlink",
+      target: "AGENTS.md",
+      owned: true,
+    };
+    return;
+  }
+
+  if (!new Set(["missing", "file"]).has(current.kind)) {
+    if (!force) throw new ConflictError(`Cannot create Claude bridge at ${planner.label(file)}`);
+    planner.symlink(file, "AGENTS.md", { linkType: "file", owned: true });
+    nextLock.bridges.claudeAgents = {
+      path: portablePath(file, planner),
+      managed: "symlink",
+      target: "AGENTS.md",
+      owned: true,
+    };
+    return;
+  }
+
+  const document = current.kind === "file" ? current.content : "";
+  const payload = managedPayload(document, "bridge/agents-md");
+  if (payload && integrity(payload) !== bridgeIntegrity && !force) {
+    throw new ConflictError("Claude AGENTS.md bridge has local changes");
+  }
+  planner.write(file, upsertClaudeBridge(document), { allowExisting: true });
+  nextLock.bridges.claudeAgents = {
+    path: portablePath(file, planner),
+    managed: "block",
+    integrity: bridgeIntegrity,
+    created: previous?.created ?? current.kind === "missing",
+    owned: true,
+  };
+}
+
+function validateSelection(component, selection, targets) {
+  if (!component.scopes.includes(selection.scope)) {
+    throw new Error(`${component.id} does not support ${selection.scope} scope`);
+  }
+  if (!targets.some((target) => component.targets.includes(target))) {
+    throw new Error(`${component.id} supports ${component.targets.join(", ")}, not the selected targets`);
+  }
+}
+
+function lockSource(component) {
+  if (component.content?.kind === "bundled") {
+    return { kind: "bundled", path: component.content.path };
+  }
+  if (component.content?.kind === "remote") {
+    return {
+      kind: "remote",
+      url: component.content.url,
+      upstream: component.content.upstream,
+      mutable: Boolean(component.content.mutable),
+    };
+  }
+  if (component.kind === "plugin") return { kind: "adapter", adapter: "claude" };
+  return { kind: "catalog" };
+}
+
+function fileRecord(file, kind, planner, properties = {}) {
+  return { path: portablePath(file, planner), kind, ...properties };
+}
+
+function findFile(previous, file, planner) {
+  const encoded = portablePath(file, planner);
+  return previous?.files?.find((candidate) => candidate.path === encoded);
+}

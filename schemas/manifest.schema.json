@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/jmlero/harness-workshop/main/schemas/manifest.schema.json",
+  "title": "harness-workshop project manifest",
+  "type": "object",
+  "required": ["manifestVersion", "targets", "components"],
+  "properties": {
+    "manifestVersion": { "const": 1 },
+    "targets": { "type": "array", "items": { "enum": ["claude", "codex"] }, "minItems": 1, "uniqueItems": true },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "scope"],
+        "properties": {
+          "id": { "type": "string" },
+          "scope": { "enum": ["project", "user"] }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
