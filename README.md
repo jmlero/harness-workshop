@@ -24,6 +24,7 @@ integrations. Codex reads the canonical files directly.
 ```text
 harness-workshop list
 harness-workshop add block/tdd skill/review-pr
+harness-workshop add block/ponytail skill/ponytail
 harness-workshop plan
 harness-workshop remove skill/review-pr
 harness-workshop update
@@ -32,6 +33,8 @@ harness-workshop doctor
 
 Project scope is the default; supported components can use `--scope user`.
 Claude-only plugins and hooks enable their required adapter automatically.
+`block/ponytail` keeps minimal implementation rules always active;
+`skill/ponytail` adds the detailed workflow on demand.
 
 The CLI records desired components and optional adapters in
 `.harness-workshop/manifest.json`, with pins and checksums in
@@ -43,4 +46,5 @@ The Claude adapter links canonical skills from `.claude/skills` and bridges
 `CLAUDE.md` to `AGENTS.md`. The opt-in `slim-cli` hook requires `jq`.
 
 See [VISION.md](VISION.md) for the design principles. Licensed under
-Apache-2.0.
+Apache-2.0; adapted components retain their upstream notices in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

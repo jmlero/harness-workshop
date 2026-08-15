@@ -18,13 +18,24 @@ test("non-interactive init installs canonical defaults without choosing a vendor
   assert.equal(manifest.manifestVersion, 2);
   assert.deepEqual(manifest.adapters, []);
   assert.deepEqual(manifest.components.map(({ id }) => id), [
+    "block/ponytail",
     "block/tdd",
     "skill/audit-code",
     "tool/code-review-graph",
     "tool/context7",
   ]);
   assert.ok(fs.existsSync(path.join(fixture.project, ".agents", "skills", "audit-code", "SKILL.md")));
+  const agents = read(fixture.project, "AGENTS.md");
+  assert.match(agents, /harness-workshop:start block\/ponytail/);
+  assert.match(agents, /harness-workshop:start block\/tdd/);
   assert.equal(fs.existsSync(path.join(fixture.project, ".claude")), false);
+
+  const removed = run(fixture, "remove", "block/tdd");
+  assert.equal(removed.status, 0, removed.stderr);
+  const after = read(fixture.project, "AGENTS.md");
+  assert.match(after, /harness-workshop:start block\/ponytail/);
+  assert.doesNotMatch(after, /harness-workshop:start block\/tdd/);
+  assert.match(run(fixture, "doctor").stdout, /Healthy: 4 components/);
 });
 
 test("portable content installs canonically without vendor files", (context) => {
@@ -63,6 +74,19 @@ test("portable content installs canonically without vendor files", (context) => 
   assert.doesNotMatch(agentsAfter, /harness-workshop:start/);
   const claudeAfter = read(fixture.project, "CLAUDE.md");
   assert.equal(claudeAfter, "# Claude notes\n");
+});
+
+test("installs the distilled Ponytail skill with pinned attribution", (context) => {
+  const fixture = makeFixture(context);
+  const installed = run(fixture, "add", "skill/ponytail");
+  assert.equal(installed.status, 0, installed.stderr);
+
+  const skill = read(fixture.project, ".agents/skills/ponytail/SKILL.md");
+  assert.match(skill, /Stop at the first option that fully works/i);
+  const lock = JSON.parse(read(fixture.project, ".harness-workshop/lock.json"));
+  assert.equal(lock.components["skill/ponytail"].source.upstream, "DietrichGebert/ponytail");
+  assert.match(lock.components["skill/ponytail"].source.revision, /^[0-9a-f]{40}$/);
+  assert.match(run(fixture, "doctor").stdout, /Healthy: 1 components/);
 });
 
 test("Claude adapter exposes canonical blocks and skills without duplicating them", (context) => {

@@ -133,8 +133,9 @@ export class Planner {
   setChange(absolute, after, current) {
     const existing = this.changes.get(absolute);
     const before = existing?.before ?? current;
-    this.virtual.set(absolute, after);
-    if (sameState(before, after)) {
+    const virtual = materializedState(after);
+    this.virtual.set(absolute, virtual);
+    if (sameState(before, virtual)) {
       this.changes.delete(absolute);
       return;
     }
@@ -145,6 +146,13 @@ export class Planner {
       after,
     });
   }
+}
+
+function materializedState(operation) {
+  if (operation.kind === "write") {
+    return { kind: "file", content: operation.content, mode: operation.mode };
+  }
+  return operation;
 }
 
 export function formatPlan(planner) {

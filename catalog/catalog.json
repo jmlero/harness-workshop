@@ -15,6 +15,24 @@
       "suggest": { "when": "always", "reason": "portable development baseline" }
     },
     {
+      "id": "block/ponytail",
+      "version": "1.0.0",
+      "kind": "block",
+      "name": "Minimal implementation",
+      "category": "Development methodology",
+      "description": "Keep the smallest safe implementation rules always available in AGENTS.md.",
+      "scopes": ["project"],
+      "content": {
+        "kind": "bundled",
+        "path": "blocks/ponytail.md",
+        "upstream": "DietrichGebert/ponytail",
+        "revision": "2ed6c52c9d7e5e56942508591085fd45dea277d3"
+      },
+      "license": "MIT",
+      "context": { "loading": "always", "estimatedTokens": 110 },
+      "suggest": { "when": "always", "reason": "portable minimal-implementation baseline" }
+    },
+    {
       "id": "skill/audit-code",
       "version": "1.0.0",
       "kind": "skill",
@@ -49,6 +67,23 @@
       "content": { "kind": "bundled", "path": "skills/review-pr/SKILL.md" },
       "context": { "loading": "on-demand", "estimatedTokens": 550 },
       "suggest": { "when": ["isGitRepo"], "reason": "Git repository detected" }
+    },
+    {
+      "id": "skill/ponytail",
+      "version": "1.0.0",
+      "kind": "skill",
+      "name": "Ponytail",
+      "category": "Development methodology",
+      "description": "Choose the smallest safe solution without skipping correctness, explicit requirements, or verification.",
+      "scopes": ["project", "user"],
+      "content": {
+        "kind": "bundled",
+        "path": "skills/ponytail/SKILL.md",
+        "upstream": "DietrichGebert/ponytail",
+        "revision": "2ed6c52c9d7e5e56942508591085fd45dea277d3"
+      },
+      "license": "MIT",
+      "context": { "loading": "on-demand", "estimatedTokens": 330 }
     },
     {
       "id": "hook/slim-cli",

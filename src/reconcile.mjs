@@ -372,7 +372,12 @@ function validateSelection(component, selection, adapters) {
 
 function lockSource(component) {
   if (component.content?.kind === "bundled") {
-    return { kind: "bundled", path: component.content.path };
+    return {
+      kind: "bundled",
+      path: component.content.path,
+      ...(component.content.upstream ? { upstream: component.content.upstream } : {}),
+      ...(component.content.revision ? { revision: component.content.revision } : {}),
+    };
   }
   if (component.content?.kind === "remote") {
     return {

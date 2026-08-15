@@ -17,13 +17,15 @@ const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".
 test("catalog contains every ported component with stable metadata", () => {
   const components = listComponents();
   const ids = components.map(({ id }) => id);
-  assert.equal(components.length, 18);
+  assert.equal(components.length, 20);
   assert.equal(new Set(ids).size, ids.length);
   for (const id of [
     "block/tdd",
+    "block/ponytail",
     "skill/audit-code",
     "skill/audit-docs",
     "skill/review-pr",
+    "skill/ponytail",
     "hook/slim-cli",
     "plugin/frontend-design",
     "plugin/typescript-lsp",
@@ -47,6 +49,18 @@ test("catalog contains every ported component with stable metadata", () => {
     if (component.adapters) assert.deepEqual(component.adapters, ["claude"]);
     if (component.content?.kind === "bundled") assert.ok(bundledContent(component).length > 20);
   }
+});
+
+test("adapted bundled components retain pinned upstream attribution", () => {
+  const ponytail = listComponents().filter(({ id }) => new Set(["block/ponytail", "skill/ponytail"]).has(id));
+  assert.equal(ponytail.length, 2);
+  for (const component of ponytail) {
+    assert.equal(component.license, "MIT");
+    assert.equal(component.content.upstream, "DietrichGebert/ponytail");
+    assert.match(component.content.revision, /^[0-9a-f]{40}$/);
+    assert.match(bundledContent(component), /smallest/i);
+  }
+  assert.match(fs.readFileSync(path.join(repository, "THIRD_PARTY_NOTICES.md"), "utf8"), /DietrichGebert\/ponytail/);
 });
 
 test("portable components are vendor-neutral and adapters expose only compatible edges", () => {
