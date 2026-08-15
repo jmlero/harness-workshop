@@ -4,56 +4,148 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  aggregateContextCost,
   availableWithAdapters,
   bundledContent,
   bundledPackage,
+  componentContextCost,
+  catalogConflicts,
   isPortable,
   listComponents,
   lockedRemoteContent,
   lockedRemotePackage,
   remoteContent,
   resolveRemotePackage,
+  retiredComponentIds,
+  suggested,
+  validateCatalogComponent,
 } from "../src/catalog.mjs";
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const appMeerkatBlockIds = [
+  "block/completion-evidence",
+  "block/transparent-shortcuts",
+  "block/secure-defaults",
+  "block/ci-production-parity",
+  "block/no-unfinished-ui",
+];
 
-test("catalog contains every ported component with stable metadata", () => {
+test("catalog contains the reviewed block-first component set", () => {
   const components = listComponents();
   const ids = components.map(({ id }) => id);
-  assert.equal(components.length, 21);
+  assert.equal(components.length, 20);
   assert.equal(new Set(ids).size, ids.length);
   for (const id of [
     "block/tdd",
     "block/ponytail",
+    ...appMeerkatBlockIds,
     "skill/audit-code",
     "skill/audit-docs",
     "skill/review-pr",
-    "skill/ponytail",
+    "skill/verify-frontend",
+    "skill/terraform-skill",
+    "skill/fastapi",
     "command/verify-work",
     "command/commit-work",
-    "hook/slim-cli",
     "plugin/frontend-design",
     "plugin/typescript-lsp",
     "plugin/pyright-lsp",
     "plugin/github",
-    "plugin/terraform",
-    "skill/terraform-skill",
-    "plugin/superpowers",
     "plugin/codex",
-    "tool/code-review-graph",
-    "tool/codegraph",
-    "tool/backlog",
-    "skill/fastapi",
   ]) assert.ok(ids.includes(id), id);
 
+  assert.ok([...retiredComponentIds].every((id) => !ids.includes(id)));
   for (const component of components) {
     assert.match(component.version, /^\d+\.\d+\.\d+$/);
     assert.ok(component.scopes.length);
     assert.equal(Object.hasOwn(component, "targets"), false);
-    if (component.id === "hook/slim-cli") assert.deepEqual(component.adapters, ["claude", "grok"]);
-    else if (component.adapters) assert.deepEqual(component.adapters, ["claude"]);
+    if (component.adapters) assert.deepEqual(component.adapters, ["claude"]);
     if (component.content?.kind === "bundled") assert.ok(bundledContent(component).length > 20);
+    if (component.kind === "block") {
+      assert.equal(component.context.loading, "always");
+      assert.ok(component.outcome);
+      assert.ok(component.alwaysOnJustification);
+      assert.equal(Object.hasOwn(component.context, "estimatedTokens"), false);
+      const cost = componentContextCost(component);
+      assert.ok(cost.words >= 25 && cost.words <= 90, `${component.id}: ${cost.words} words`);
+      assert.ok(cost.estimatedTokens >= 30 && cost.estimatedTokens <= 150, component.id);
+    }
   }
+});
+
+test("every catalog component has a recorded form and deletion-pressure decision", () => {
+  const review = fs.readFileSync(
+    path.join(repository, "docs", "catalog-review-2026-08-15.md"),
+    "utf8",
+  );
+  for (const { id } of listComponents()) assert.ok(review.includes("`" + id + "`"), id);
+  assert.match(review, /Removed forms/);
+
+  const workflow = fs.readFileSync(path.join(repository, "docs", "evaluations", "README.md"), "utf8");
+  for (const outcome of ["retain", "shorten", "demote", "replace", "remove", "reject"]) {
+    assert.match(workflow, new RegExp(`\\*\\*${outcome}\\*\\*`));
+  }
+  const baseline = fs.readFileSync(
+    path.join(repository, "docs", "evaluations", "records", "2026-08-15-completion-evidence.md"),
+    "utf8",
+  );
+  assert.match(baseline, /Control, without the block/);
+  assert.match(baseline, /Treatment, with the block/);
+  assert.match(baseline, /not recommendation evidence/i);
+});
+
+test("self-hosted instructions no longer require linked short modules", () => {
+  const instructions = fs.readFileSync(path.join(repository, "AGENTS.md"), "utf8");
+  assert.match(instructions, /## Workflow/);
+  assert.doesNotMatch(instructions, /agents\/(instruction-modules|todo-workflow)\.md/);
+  assert.equal(fs.existsSync(path.join(repository, "agents", "instruction-modules.md")), false);
+  assert.equal(fs.existsSync(path.join(repository, "agents", "todo-workflow.md")), false);
+});
+
+test("rejected Karpathy and memory candidates remain documented no-ops", () => {
+  const ids = listComponents().map(({ id }) => id);
+  assert.ok(ids.every((id) => !/karpathy|memory/.test(id)));
+  for (const record of [
+    "2026-08-15-karpathy-guidelines.md",
+    "2026-08-15-agent-memory.md",
+  ]) {
+    const content = fs.readFileSync(path.join(repository, "docs", "evaluations", "records", record), "utf8");
+    assert.match(content, /install(?:s)? nothing/i);
+    assert.match(content, /\*\*Reject/);
+  }
+});
+
+test("word and token costs are derived and aggregate only always-loaded blocks", () => {
+  const blocks = listComponents().filter(({ kind }) => kind === "block");
+  const total = aggregateContextCost(blocks);
+  assert.equal(total.words, blocks.reduce((sum, component) => sum + componentContextCost(component).words, 0));
+  assert.equal(total.estimatedTokens, blocks.reduce(
+    (sum, component) => sum + componentContextCost(component).estimatedTokens,
+    0,
+  ));
+  assert.deepEqual(aggregateContextCost(listComponents().filter(({ kind }) => kind !== "block")), {
+    words: 0,
+    estimatedTokens: 0,
+  });
+});
+
+test("App Meerkat guidance is routed between compact blocks and on-demand workflows", () => {
+  const components = listComponents();
+  for (const id of appMeerkatBlockIds) {
+    const component = components.find((candidate) => candidate.id === id);
+    assert.equal(component.license, "Apache-2.0");
+    assert.equal(component.content.upstream, "jmlero/app-meerkat");
+    assert.equal(component.content.revision, "51b77a6a0506661979bef8c6b152d8b3d4fcc3ba");
+  }
+  const frontend = components.find(({ id }) => id === "skill/verify-frontend");
+  assert.equal(frontend.context.loading, "on-demand");
+  assert.equal(frontend.content.upstream, "jmlero/app-meerkat");
+  assert.match(bundledContent(frontend), /representative narrow viewport/i);
+  assert.match(bundledContent(components.find(({ id }) => id === "command/verify-work")), /CI failures/);
+  assert.match(
+    fs.readFileSync(path.join(repository, "THIRD_PARTY_NOTICES.md"), "utf8"),
+    /jmlero\/app-meerkat/,
+  );
 });
 
 test("workflow commands are complete, explicitly invoked Agent Skill packages", () => {
@@ -67,19 +159,17 @@ test("workflow commands are complete, explicitly invoked Agent Skill packages", 
   }
 });
 
-test("adapted bundled components retain pinned upstream attribution", () => {
-  const ponytail = listComponents().filter(({ id }) => new Set(["block/ponytail", "skill/ponytail"]).has(id));
-  assert.equal(ponytail.length, 2);
-  for (const component of ponytail) {
-    assert.equal(component.license, "MIT");
-    assert.equal(component.content.upstream, "DietrichGebert/ponytail");
-    assert.match(component.content.revision, /^[0-9a-f]{40}$/);
-    assert.match(bundledContent(component), /smallest/i);
-  }
+test("Ponytail remains one compact attributed block without a duplicate skill", () => {
+  const ponytail = listComponents().filter(({ id }) => id.includes("ponytail"));
+  assert.deepEqual(ponytail.map(({ id }) => id), ["block/ponytail"]);
+  assert.equal(ponytail[0].license, "MIT");
+  assert.equal(ponytail[0].content.upstream, "DietrichGebert/ponytail");
+  assert.match(ponytail[0].content.revision, /^[0-9a-f]{40}$/);
+  assert.match(bundledContent(ponytail[0]), /smallest/i);
   assert.match(fs.readFileSync(path.join(repository, "THIRD_PARTY_NOTICES.md"), "utf8"), /DietrichGebert\/ponytail/);
 });
 
-test("portable components are vendor-neutral and adapters expose only compatible edges", () => {
+test("portable components are vendor-neutral and integrations are Claude-only", () => {
   const components = listComponents();
   const portable = components.filter(isPortable);
   const claude = components.filter((component) => availableWithAdapters(component, ["claude"]));
@@ -90,9 +180,62 @@ test("portable components are vendor-neutral and adapters expose only compatible
   assert.ok(portable.every(({ kind }) => kind !== "plugin" && kind !== "hook"));
   assert.ok(portable.every((component) => component.adapters === undefined));
   assert.equal(claude.length, components.length);
-  assert.equal(grok.length, portable.length + 1);
-  assert.ok(grok.some(({ id }) => id === "hook/slim-cli"));
+  assert.equal(grok.length, portable.length);
   assert.equal(availableWithAdapters(components.find(({ id }) => id === "plugin/github"), []), false);
+});
+
+test("suggestions support prerequisite-aware AND and stack-aware OR rules", () => {
+  const typescript = listComponents().find(({ id }) => id === "plugin/typescript-lsp");
+  assert.equal(suggested(typescript, { hasTypeScript: true }).pick, false);
+  assert.equal(suggested(typescript, {
+    hasTypeScript: true,
+    hasTypeScriptLanguageServer: true,
+  }).pick, true);
+  const frontend = listComponents().find(({ id }) => id === "skill/verify-frontend");
+  assert.equal(suggested(frontend, { hasSvelte: true }).pick, true);
+  assert.equal(suggested(frontend, {}).pick, false);
+});
+
+test("critical integration and block metadata is runtime-validated", () => {
+  const plugin = listComponents().find(({ id }) => id === "plugin/github");
+  assert.throws(
+    () => validateCatalogComponent({ ...plugin, lastVerified: undefined }, new Set()),
+    /lastVerified/,
+  );
+  const block = listComponents().find(({ id }) => id === "block/tdd");
+  assert.throws(
+    () => validateCatalogComponent({ ...block, alwaysOnJustification: "" }, new Set()),
+    /alwaysOnJustification/,
+  );
+  assert.throws(
+    () => validateCatalogComponent({ ...block, conflictsWith: [block.id] }, new Set()),
+    /component conflicts/,
+  );
+  assert.deepEqual(catalogConflicts([
+    { id: "block/one", conflictsWith: ["block/two"] },
+    { id: "block/two" },
+  ]), ["block/one <> block/two"]);
+});
+
+test("current marketplace mappings are explicit, verified, and non-overlapping", () => {
+  const plugins = Object.fromEntries(listComponents()
+    .filter(({ kind }) => kind === "plugin")
+    .map((component) => [component.id, component]));
+  assert.deepEqual(plugins["plugin/frontend-design"].adapter.claude, {
+    pluginId: "frontend-design",
+    marketplace: { name: "claude-plugins-official", repo: "anthropics/claude-plugins-official" },
+  });
+  assert.deepEqual(plugins["plugin/github"].adapter.claude, {
+    pluginId: "github",
+    marketplace: { name: "claude-plugins-official", repo: "anthropics/claude-plugins-official" },
+  });
+  assert.deepEqual(plugins["plugin/codex"].adapter.claude, {
+    pluginId: "codex",
+    marketplace: { name: "openai-codex", repo: "openai/codex-plugin-cc" },
+  });
+  assert.ok(Object.values(plugins).every(({ lastVerified }) => lastVerified === "2026-08-15"));
+  assert.equal(plugins["plugin/terraform"], undefined);
+  assert.equal(plugins["plugin/superpowers"], undefined);
 });
 
 test("remote skill directories are pinned, normalized, checksummed, and complete", async (context) => {
@@ -150,16 +293,15 @@ test("remote skill directories are pinned, normalized, checksummed, and complete
   assert.equal(await lockedRemoteContent(component, resolved.source), await remoteContent(component));
 });
 
-test("Claude marketplace adapters package canonical skills inside the cached plugin root", () => {
+test("Claude marketplace adapters package only canonical skills", () => {
   const marketplace = JSON.parse(fs.readFileSync(path.join(repository, ".claude-plugin", "marketplace.json"), "utf8"));
-  assert.equal(marketplace.plugins.length, 4);
+  assert.equal(marketplace.plugins.length, 3);
   for (const plugin of marketplace.plugins) {
     assert.equal(plugin.source, "./");
     assert.equal(plugin.strict, false);
     assert.equal(plugin.license, "Apache-2.0");
-    const componentPaths = [...(plugin.skills ?? []), ...(typeof plugin.hooks === "string" ? [plugin.hooks] : [])];
-    assert.ok(componentPaths.length > 0, plugin.name);
-    for (const componentPath of componentPaths) {
+    assert.ok(plugin.skills.length > 0, plugin.name);
+    for (const componentPath of plugin.skills) {
       assert.ok(fs.existsSync(path.resolve(repository, componentPath)), `${plugin.name}: ${componentPath}`);
     }
   }

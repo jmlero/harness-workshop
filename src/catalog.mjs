@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { commandAvailable } from "./detect.mjs";
 import { integrity, normalizeText, stableJson } from "./integrity.mjs";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -9,36 +10,34 @@ const catalogPath = path.join(catalogRoot, "catalog.json");
 const remotePackageMaxFiles = 200;
 const remotePackageMaxBytes = 2_000_000;
 const supportedCatalogAdapters = new Set(["claude", "grok"]);
+const supportedKinds = new Set(["block", "skill", "command", "plugin"]);
+const supportedScopes = new Set(["project", "user"]);
+const supportedLoading = new Set(["always", "on-demand", "explicit", "none"]);
+
+export const retiredComponentIds = new Set([
+  "block/ci-failure-triage",
+  "block/responsive-ui-verification",
+  "skill/ponytail",
+  "hook/slim-cli",
+  "plugin/terraform",
+  "plugin/superpowers",
+  "tool/code-review-graph",
+  "tool/codegraph",
+  "tool/backlog",
+]);
 
 let cachedCatalog;
 
 export function loadCatalog() {
   if (cachedCatalog) return cachedCatalog;
   const parsed = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
+  if (parsed.catalogVersion !== 2 || !Array.isArray(parsed.components)) {
+    throw new Error("Unsupported catalog document");
+  }
   const ids = new Set();
 
   for (const component of parsed.components ?? []) {
-    if (!component.id || ids.has(component.id)) {
-      throw new Error(`Invalid or duplicate catalog component: ${component.id ?? "<missing>"}`);
-    }
-    if (!component.id.startsWith(`${component.kind}/`)) {
-      throw new Error(`Catalog kind and ID disagree: ${component.id}`);
-    }
-    if (Object.hasOwn(component, "targets")) {
-      throw new Error(`Catalog component uses legacy target metadata: ${component.id}`);
-    }
-    if (component.adapters && (!Array.isArray(component.adapters)
-      || !component.adapters.length
-      || component.adapters.some((adapter) => !supportedCatalogAdapters.has(adapter)))) {
-      throw new Error(`Invalid adapters for catalog component: ${component.id}`);
-    }
-    if (new Set(["hook", "plugin"]).has(component.kind) && !component.adapters) {
-      throw new Error(`Adapter-specific component must declare adapters: ${component.id}`);
-    }
-    if (new Set(["skill", "command"]).has(component.kind)
-      && !Number.isInteger(component.context?.estimatedTokens)) {
-      throw new Error(`Skill or command must declare an estimated context cost: ${component.id}`);
-    }
+    validateCatalogComponent(component, ids);
     if (component.content?.kind === "remote" && component.content.root) {
       const github = parseGitHubRawUrl(component.content.url);
       const root = normalizeRemotePath(component.content.root, `${component.id} root`);
@@ -74,6 +73,9 @@ export function getComponent(id) {
 export function requireComponent(id) {
   const component = getComponent(id);
   if (!component) {
+    if (retiredComponentIds.has(id)) {
+      throw new Error(`Component was retired after catalog review: ${id}. Remove it from existing installations with \`harness-workshop remove ${id}\``);
+    }
     const matches = listComponents()
       .map((candidate) => candidate.id)
       .filter((candidate) => candidate.includes(id));
@@ -374,14 +376,219 @@ export function metadataIntegrity(component) {
 
 export function suggested(component, detected) {
   const when = component.suggest?.when;
-  if (when === "always") return { pick: true, reason: component.suggest.reason };
-  if (Array.isArray(when)) {
+  if (!when) return { pick: false };
+  const all = when.all ?? [];
+  const any = when.any ?? [];
+  const pick = all.every((signal) => Boolean(detected[signal]))
+    && (!any.length || any.some((signal) => Boolean(detected[signal])));
+  return { pick, ...(pick ? { reason: component.suggest.reason } : {}) };
+}
+
+export function componentContextCost(component) {
+  if (!component.context || component.context.loading === "none") {
+    return { words: 0, estimatedTokens: 0 };
+  }
+  if (component.content?.kind === "bundled") {
+    const content = bundledContent(component);
     return {
-      pick: when.some((signal) => Boolean(detected[signal])),
-      reason: component.suggest.reason,
+      words: countWords(content),
+      estimatedTokens: Math.ceil(Buffer.byteLength(normalizeText(content), "utf8") / 4),
     };
   }
-  return { pick: false };
+  return {
+    words: null,
+    estimatedTokens: component.context.estimatedTokens,
+  };
+}
+
+export function aggregateContextCost(components) {
+  return components
+    .filter((component) => component.context?.loading === "always")
+    .reduce((total, component) => {
+      const cost = componentContextCost(component);
+      return {
+        words: total.words + (cost.words ?? 0),
+        estimatedTokens: total.estimatedTokens + (cost.estimatedTokens ?? 0),
+      };
+    }, { words: 0, estimatedTokens: 0 });
+}
+
+export function countWords(content) {
+  const normalized = normalizeText(content).trim();
+  return normalized ? normalized.split(/\s+/u).length : 0;
+}
+
+export function missingPrerequisiteCommands(component) {
+  return (component.requires?.commands ?? []).filter((command) => !commandAvailable(command));
+}
+
+export function catalogConflicts(components) {
+  const selected = new Set(components.map(({ id }) => id));
+  const conflicts = new Set();
+  for (const component of components) {
+    for (const other of component.conflictsWith ?? []) {
+      if (!selected.has(other)) continue;
+      conflicts.add([component.id, other].sort().join(" <> "));
+    }
+  }
+  return [...conflicts].sort();
+}
+
+export function validateCatalogComponent(component, ids = new Set()) {
+  const id = component?.id ?? "<missing>";
+  if (!component || typeof component !== "object" || !component.id || ids.has(component.id)) {
+    throw new Error(`Invalid or duplicate catalog component: ${id}`);
+  }
+  if (!supportedKinds.has(component.kind) || !component.id.startsWith(`${component.kind}/`)) {
+    throw new Error(`Catalog kind and ID disagree: ${component.id}`);
+  }
+  if (!/^(block|skill|command|plugin)\/[a-z0-9][a-z0-9-]*$/.test(component.id)) {
+    throw new Error(`Invalid catalog component ID: ${component.id}`);
+  }
+  if (!/^\d+\.\d+\.\d+$/.test(component.version ?? "")) {
+    throw new Error(`Invalid catalog component version: ${component.id}`);
+  }
+  for (const field of ["name", "category", "description"]) {
+    if (typeof component[field] !== "string" || !component[field].trim()) {
+      throw new Error(`Catalog component must declare ${field}: ${component.id}`);
+    }
+  }
+  if (!Array.isArray(component.scopes) || !component.scopes.length
+    || new Set(component.scopes).size !== component.scopes.length
+    || component.scopes.some((scope) => !supportedScopes.has(scope))) {
+    throw new Error(`Invalid scopes for catalog component: ${component.id}`);
+  }
+  if (component.recommendedScope && !component.scopes.includes(component.recommendedScope)) {
+    throw new Error(`Recommended scope is not supported: ${component.id}`);
+  }
+  if (Object.hasOwn(component, "targets")) {
+    throw new Error(`Catalog component uses legacy target metadata: ${component.id}`);
+  }
+  validateAdapters(component);
+  validateContext(component);
+  validateContent(component);
+  validateSuggestion(component);
+  validateRequirements(component);
+  if (component.conflictsWith !== undefined
+    && (!Array.isArray(component.conflictsWith)
+      || new Set(component.conflictsWith).size !== component.conflictsWith.length
+      || component.conflictsWith.includes(component.id)
+      || component.conflictsWith.some((id) => !/^(block|skill|command|plugin)\/[a-z0-9][a-z0-9-]*$/.test(id)))) {
+    throw new Error(`Invalid component conflicts: ${component.id}`);
+  }
+  if (component.kind === "block") {
+    if (component.scopes.length !== 1 || component.scopes[0] !== "project") {
+      throw new Error(`Instruction block must use project scope: ${component.id}`);
+    }
+    if (component.context?.loading !== "always") {
+      throw new Error(`Instruction block must always load: ${component.id}`);
+    }
+    for (const field of ["outcome", "alwaysOnJustification"]) {
+      if (typeof component[field] !== "string" || !component[field].trim()) {
+        throw new Error(`Instruction block must declare ${field}: ${component.id}`);
+      }
+    }
+    const { estimatedTokens } = componentContextCost(component);
+    if (estimatedTokens < 30 || estimatedTokens > 150) {
+      throw new Error(`Instruction block must stay within the 30-150 token target: ${component.id}`);
+    }
+  }
+  if (component.kind === "plugin") {
+    const claude = component.adapter?.claude;
+    if (!claude?.pluginId || !claude.marketplace?.name || !claude.marketplace?.repo) {
+      throw new Error(`Claude plugin metadata is incomplete: ${component.id}`);
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(component.lastVerified ?? "")) {
+      throw new Error(`Plugin must declare lastVerified: ${component.id}`);
+    }
+    if (component.adapters.length !== 1 || component.adapters[0] !== "claude") {
+      throw new Error(`Claude plugin must declare only the Claude adapter: ${component.id}`);
+    }
+    if (component.content || component.context) {
+      throw new Error(`Plugin context is owned by its marketplace package: ${component.id}`);
+    }
+  } else if (component.adapter || component.lastVerified) {
+    throw new Error(`Portable component cannot declare plugin metadata: ${component.id}`);
+  }
+  ids.add(component.id);
+  return component;
+}
+
+function validateAdapters(component) {
+  if (component.adapters && (!Array.isArray(component.adapters)
+    || !component.adapters.length
+    || component.adapters.some((adapter) => !supportedCatalogAdapters.has(adapter)))) {
+    throw new Error(`Invalid adapters for catalog component: ${component.id}`);
+  }
+  if (component.kind === "plugin" && !component.adapters) {
+    throw new Error(`Adapter-specific component must declare adapters: ${component.id}`);
+  }
+  if (component.kind !== "plugin" && component.adapters) {
+    throw new Error(`Portable component cannot declare adapters: ${component.id}`);
+  }
+}
+
+function validateContext(component) {
+  if (new Set(["block", "skill", "command"]).has(component.kind)) {
+    if (!component.context || !supportedLoading.has(component.context.loading)) {
+      throw new Error(`Component must declare a valid context loading mode: ${component.id}`);
+    }
+  }
+  if (component.content?.kind === "remote"
+    && !Number.isInteger(component.context?.estimatedTokens)) {
+    throw new Error(`Remote component must declare an estimated context cost: ${component.id}`);
+  }
+  if (component.context?.estimatedTokens !== undefined
+    && (!Number.isInteger(component.context.estimatedTokens) || component.context.estimatedTokens < 0)) {
+    throw new Error(`Invalid estimated context cost: ${component.id}`);
+  }
+  if (component.content?.kind === "bundled" && component.context?.estimatedTokens !== undefined) {
+    throw new Error(`Bundled context cost must be derived from content: ${component.id}`);
+  }
+}
+
+function validateContent(component) {
+  if (new Set(["block", "skill", "command"]).has(component.kind)
+    && !new Set(["bundled", "remote"]).has(component.content?.kind)) {
+    throw new Error(`Component must declare bundled or remote content: ${component.id}`);
+  }
+  if (component.content?.kind === "bundled" && !component.content.path) {
+    throw new Error(`Bundled component must declare a path: ${component.id}`);
+  }
+  if (component.content?.kind === "remote"
+    && (!component.content.url || !component.content.upstream)) {
+    throw new Error(`Remote component source is incomplete: ${component.id}`);
+  }
+  if (component.content?.revision && !/^[0-9a-f]{40}$/i.test(component.content.revision)) {
+    throw new Error(`Bundled attribution revision must be immutable: ${component.id}`);
+  }
+  if (component.content?.upstream && !component.license) {
+    throw new Error(`Attributed content must declare a license: ${component.id}`);
+  }
+}
+
+function validateSuggestion(component) {
+  if (!component.suggest) return;
+  const { when, reason } = component.suggest;
+  const ruleKeys = Object.keys(when ?? {});
+  if (!when || typeof when !== "object" || Array.isArray(when)
+    || (!Array.isArray(when.all) && !Array.isArray(when.any))
+    || ruleKeys.some((key) => !new Set(["all", "any"]).has(key))
+    || [when.all, when.any].filter(Boolean).some((signals) => !signals.length
+      || new Set(signals).size !== signals.length)
+    || [...(when.all ?? []), ...(when.any ?? [])].some((signal) => typeof signal !== "string" || !signal)
+    || typeof reason !== "string" || !reason.trim()) {
+    throw new Error(`Invalid suggestion rule: ${component.id}`);
+  }
+}
+
+function validateRequirements(component) {
+  if (!component.requires) return;
+  const commands = component.requires.commands;
+  if (!Array.isArray(commands) || !commands.length
+    || commands.some((command) => typeof command !== "string" || !/^[a-zA-Z0-9._-]+$/.test(command))) {
+    throw new Error(`Invalid command prerequisites: ${component.id}`);
+  }
 }
 
 export { catalogPath, catalogRoot, packageRoot };

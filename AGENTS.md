@@ -20,10 +20,13 @@ planning, installation, state, and drift detection.
 - Preserve Apache-2.0 metadata and upstream attribution.
 - Update `README.md` for user-visible behavior or commands.
 
-## Agent instructions
+## Workflow
 
-- [Read and follow: instruction modules](agents/instruction-modules.md)
-- [Read and follow: TODO workflow](agents/todo-workflow.md)
+For multi-step work, use `PRD.md` as the product source when present and
+`VISION.md` otherwise. Keep `TODO.md` as the single ordered backlog. Work on the
+first unchecked task whose dependencies are complete, keep task dependencies
+current, and check off work only after its acceptance criteria pass. Ask before
+materially changing product scope or priorities.
 
 ## Validation
 

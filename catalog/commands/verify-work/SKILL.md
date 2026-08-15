@@ -14,3 +14,10 @@ description: Verify current repository changes with the project's real checks an
    verification-only request unless the user explicitly asks for fixes.
 5. Report every command run and its result, checks that could not run, and any
    remaining risk. Never claim a check passed unless it actually ran.
+
+## CI failures
+
+When CI is failing, inspect the available failure log first and reproduce the
+narrowest relevant check locally. Preserve complete diagnostics and do not rerun
+blindly. Request missing external evidence only when the repository and local
+checks cannot explain the failure.

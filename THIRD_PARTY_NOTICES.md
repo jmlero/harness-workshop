@@ -2,7 +2,7 @@
 
 ## Ponytail
 
-`catalog/blocks/ponytail.md` and `catalog/skills/ponytail/SKILL.md` are adapted from
+`catalog/blocks/ponytail.md` is adapted from
 [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail), revision
 `2ed6c52c9d7e5e56942508591085fd45dea277d3`.
 
@@ -27,6 +27,16 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## App Meerkat
+
+`catalog/blocks/completion-evidence.md`, `transparent-shortcuts.md`,
+`secure-defaults.md`, `ci-production-parity.md`, and `no-unfinished-ui.md`, plus
+the CI-triage guidance in `catalog/commands/verify-work/SKILL.md` and responsive
+verification workflow in `catalog/skills/verify-frontend/SKILL.md`, are distilled
+from the agent guidance in
+[jmlero/app-meerkat](https://github.com/jmlero/app-meerkat), revision
+`51b77a6a0506661979bef8c6b152d8b3d4fcc3ba`, under Apache-2.0.
 
 ## Remote skills
 

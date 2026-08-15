@@ -1,12 +1,14 @@
 import path from "node:path";
-import { ClaudeSettingsEditor, hookCommand } from "./adapters/claude.mjs";
-import { grokCommandBridge, grokHook, grokHookDocument } from "./adapters/grok.mjs";
+import { ClaudeSettingsEditor } from "./adapters/claude.mjs";
+import { grokCommandBridge } from "./adapters/grok.mjs";
 import {
   bundledPackage,
   bundledContent,
+  catalogConflicts,
   getComponent,
   lockedRemotePackage,
   metadataIntegrity,
+  missingPrerequisiteCommands,
   requireComponent,
   resolveRemotePackage,
 } from "./catalog.mjs";
@@ -32,6 +34,9 @@ export async function reconcile({
   force = false,
   refreshRemote = false,
 }) {
+  const selectedComponents = manifest.components.map(({ id }) => requireComponent(id));
+  const conflicts = catalogConflicts(selectedComponents);
+  if (conflicts.length) throw new Error(`Selected components conflict: ${conflicts.join(", ")}`);
   const planner = new Planner({ cwd, home, force });
   const claude = new ClaudeSettingsEditor({ cwd, home });
   const nextLock = { lockfileVersion: 1, components: {}, bridges: {} };
@@ -90,20 +95,9 @@ async function installComponent(context) {
     if (resolved.source) entry.source = resolved.source;
     entry.integrity = skillPackageIntegrity(resolved.files);
     installSkill(context, entry, resolved.files);
-  } else if (component.kind === "hook") {
-    const content = bundledContent(component);
-    entry.integrity = integrity(content);
-    installHook(context, entry, content);
   } else if (component.kind === "plugin") {
     entry.integrity = entry.metadataIntegrity;
     installPlugin(context, entry);
-  } else if (component.kind === "tool") {
-    entry.integrity = entry.metadataIntegrity;
-    entry.manual = component.manual;
-    context.planner.note(`${component.id}: ${component.manual.install}`);
-    if (component.manual.postInstall) {
-      context.planner.note(`${component.id} after install: ${component.manual.postInstall}`);
-    }
   }
 
   if (previous && previous.scope !== selection.scope && component.kind === "plugin") {
@@ -213,53 +207,6 @@ function installSkill({ component, selection, adapters, previous, planner, cwd, 
   }
 }
 
-function installHook({ component, selection, adapters, previous, planner, claude, cwd, home }, entry, content) {
-  const root = selection.scope === "user" ? home : cwd;
-  entry.adapter = {};
-
-  if (previous?.adapter?.claude?.command
-    && (!adapters.includes("claude") || previous.scope !== selection.scope)) {
-    claude.disableHook(previous.scope, previous.adapter.claude.command);
-  }
-
-  if (adapters.includes("claude")) {
-    const file = path.join(root, ".claude", "hooks", "harness-workshop", "slim-cli.sh");
-    installHookFile({ file, content, previous, planner, entry, executable: true });
-    const command = hookCommand(selection.scope, { cwd, home });
-    claude.enableHook(selection.scope, command);
-    entry.adapter.claude = { command };
-  }
-
-  if (adapters.includes("grok")) {
-    const hook = grokHook({ scope: selection.scope, cwd, home });
-    installHookFile({ file: hook.script, content, previous, planner, entry, executable: true });
-    installHookFile({
-      file: hook.config,
-      content: grokHookDocument(),
-      previous,
-      planner,
-      entry,
-    });
-    entry.adapter.grok = { command: hook.command };
-  }
-}
-
-function installHookFile({ file, content, previous, planner, entry, executable = false }) {
-  const previousFile = findFile(previous, file, planner);
-  const current = planner.state(file);
-  const fileIntegrity = integrity(content);
-  planner.write(file, content, {
-    mode: executable ? 0o755 : 0o644,
-    owned: Boolean(previousFile) || (current.kind === "file" && current.content === content),
-    expectedIntegrity: previousFile?.integrity,
-  });
-  entry.files.push(fileRecord(file, "file", planner, {
-    integrity: fileIntegrity,
-    created: previousFile?.created ?? current.kind === "missing",
-    ...(executable ? { executable: true } : {}),
-  }));
-}
-
 function installPlugin({ component, selection, claude }, entry) {
   claude.enablePlugin(component, selection.scope);
   entry.adapter = component.adapter;
@@ -362,12 +309,6 @@ function reconcileClaudeBridge({ manifest, previousLock, nextLock, planner, cwd,
   }
 
   const current = planner.state(file);
-  if (previous?.managed === "symlink" && current.kind !== "missing" && current.kind !== "symlink" && !force) {
-    throw new ConflictError("Claude AGENTS.md bridge changed type");
-  }
-  if (previous?.managed === "block" && current.kind !== "missing" && current.kind !== "file" && !force) {
-    throw new ConflictError("Claude AGENTS.md bridge changed type");
-  }
   if (current.kind === "symlink" && current.target === "AGENTS.md") {
     nextLock.bridges.claudeAgents = {
       path: portablePath(file, planner),
@@ -376,6 +317,17 @@ function reconcileClaudeBridge({ manifest, previousLock, nextLock, planner, cwd,
       owned: previous?.managed === "symlink" ? previous.owned : false,
     };
     return;
+  }
+
+  if (previous?.managed === "symlink"
+    && !new Set(["missing", "file"]).has(current.kind)
+    && !force) {
+    throw new ConflictError("Claude AGENTS.md bridge points elsewhere; preserve it or run update --force to restore the workshop bridge");
+  }
+  if (previous?.managed === "block"
+    && !new Set(["missing", "file"]).has(current.kind)
+    && !force) {
+    throw new ConflictError("Claude AGENTS.md import changed type; preserve it or run update --force after reviewing the path");
   }
 
   if (current.kind === "missing" && process.platform !== "win32") {
@@ -406,6 +358,14 @@ function reconcileClaudeBridge({ manifest, previousLock, nextLock, planner, cwd,
   if (payload && integrity(payload) !== bridgeIntegrity && !force) {
     throw new ConflictError("Claude AGENTS.md bridge has local changes");
   }
+  if (!payload && hasAgentsImport(document)) {
+    nextLock.bridges.claudeAgents = {
+      path: portablePath(file, planner),
+      managed: "import",
+      owned: false,
+    };
+    return;
+  }
   planner.write(file, upsertClaudeBridge(document), { allowExisting: true });
   nextLock.bridges.claudeAgents = {
     path: portablePath(file, planner),
@@ -416,6 +376,10 @@ function reconcileClaudeBridge({ manifest, previousLock, nextLock, planner, cwd,
   };
 }
 
+function hasAgentsImport(document) {
+  return /^@AGENTS\.md\s*$/mu.test(document);
+}
+
 function validateSelection(component, selection, adapters) {
   if (!component.scopes.includes(selection.scope)) {
     throw new Error(`${component.id} does not support ${selection.scope} scope`);
@@ -423,6 +387,10 @@ function validateSelection(component, selection, adapters) {
   if (component.adapters
     && !adapters.some((adapter) => component.adapters.includes(adapter))) {
     throw new Error(`${component.id} requires one of these adapters: ${component.adapters.join(", ")}`);
+  }
+  const missingCommands = missingPrerequisiteCommands(component);
+  if (missingCommands.length) {
+    throw new Error(`${component.id} requires commands that are not available: ${missingCommands.join(", ")}`);
   }
 }
 

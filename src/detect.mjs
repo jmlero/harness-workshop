@@ -16,6 +16,8 @@ export function detectStack(cwd = process.cwd()) {
     hasRequirementsTxt: exists("requirements.txt"),
     hasGoMod: exists("go.mod"),
     hasCargoToml: exists("Cargo.toml"),
+    hasCI: exists(".github/workflows") || exists(".gitlab-ci.yml") || exists(".circleci")
+      || exists("azure-pipelines.yml") || exists("Jenkinsfile"),
   };
 
   try {
@@ -31,6 +33,9 @@ export function detectStack(cwd = process.cwd()) {
   context.hasNextJs = false;
   context.hasSvelte = false;
   context.hasTypeScript = context.hasTsConfig;
+  context.hasTypeScriptLanguageServer = commandAvailable("typescript-language-server");
+  context.hasPyrightLanguageServer = commandAvailable("pyright-langserver");
+  context.hasCodexCli = commandAvailable("codex");
 
   if (context.hasPackageJson) {
     try {
@@ -76,7 +81,24 @@ export function humanSummary(context) {
     ["hasCargoToml", "Rust"],
     ["hasTerraform", "Terraform"],
     ["hasDockerfile", "Docker"],
+    ["hasCI", "CI"],
     ["isGitHubRepo", "GitHub"],
   ];
   return labels.filter(([signal]) => context[signal]).map(([, label]) => label);
+}
+
+export function commandAvailable(command, environment = process.env) {
+  const directories = (environment.PATH ?? "").split(path.delimiter).filter(Boolean);
+  const extensions = process.platform === "win32"
+    ? (environment.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";")
+    : [""];
+  return directories.some((directory) => extensions.some((extension) => {
+    const candidate = path.join(directory, `${command}${extension}`);
+    try {
+      const stat = fs.statSync(candidate);
+      return stat.isFile() && (process.platform === "win32" || (stat.mode & 0o111) !== 0);
+    } catch {
+      return false;
+    }
+  }));
 }

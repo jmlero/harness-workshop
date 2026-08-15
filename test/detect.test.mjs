@@ -15,6 +15,7 @@ test("detects JavaScript, Python, Terraform, Docker, and documentation signals",
   fs.writeFileSync(path.join(root, "main.tf"), "terraform {}\n");
   fs.writeFileSync(path.join(root, "Dockerfile"), "FROM scratch\n");
   fs.writeFileSync(path.join(root, "README.md"), "# Test\n");
+  fs.mkdirSync(path.join(root, ".github", "workflows"), { recursive: true });
 
   const detected = detectStack(root);
   assert.equal(detected.hasReact, true);
@@ -25,5 +26,6 @@ test("detects JavaScript, Python, Terraform, Docker, and documentation signals",
   assert.equal(detected.hasTerraform, true);
   assert.equal(detected.hasDockerfile, true);
   assert.equal(detected.hasDocs, true);
+  assert.equal(detected.hasCI, true);
   assert.deepEqual(humanSummary(detected).slice(0, 3), ["React", "Next.js", "TypeScript"]);
 });

@@ -2,10 +2,10 @@
   "name": "jmlero",
   "owner": { "name": "jmlero" },
   "metadata": {
-    "description": "Claude adapter for portable harness-workshop skills and hooks",
+    "description": "Claude adapter for portable harness-workshop skills",
     "version": "0.1.0"
   },
-  "description": "Portable harness-workshop skills and Claude-specific hooks",
+  "description": "Portable harness-workshop skills for Claude Code",
   "plugins": [
     {
       "name": "audit-code",
@@ -36,16 +36,6 @@
       "skills": ["./adapters/claude/plugins/review-pr/skills/review-pr"],
       "strict": false,
       "keywords": ["review", "pull-request", "security"]
-    },
-    {
-      "name": "slim-cli",
-      "source": "./",
-      "description": "Opt-in safe quiet-flag hook",
-      "version": "2.0.0",
-      "license": "Apache-2.0",
-      "hooks": "./adapters/claude/plugins/slim-cli/hooks/hooks.json",
-      "strict": false,
-      "keywords": ["cli", "hook", "context"]
     }
   ]
 }

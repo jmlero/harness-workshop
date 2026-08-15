@@ -1,12 +1,11 @@
-import { integrity, normalizeText } from "./integrity.mjs";
+import { normalizeText } from "./integrity.mjs";
 
 export class ManagedContentError extends Error {}
 
 export function upsertManagedBlock(document, component, content) {
   const normalized = normalizeText(content);
-  const digest = integrity(normalized);
   const range = findManagedRange(document, component.id);
-  const segment = managedSegment(component.id, component.version, digest, normalized);
+  const segment = managedSegment(component.id, normalized);
 
   if (range) return `${document.slice(0, range.start)}${segment}${document.slice(range.end)}`;
   if (!document) return `${segment}\n`;
@@ -33,12 +32,15 @@ export function managedPayload(document, id) {
   if (firstNewline === -1 || lastNewline <= firstNewline) {
     throw new ManagedContentError(`Malformed managed block: ${id}`);
   }
-  const body = segment.slice(firstNewline + 1, lastNewline);
-  const metadataEnd = body.indexOf("\n");
-  if (metadataEnd === -1 || !body.startsWith("<!-- harness-workshop:source ")) {
-    throw new ManagedContentError(`Missing managed metadata: ${id}`);
+  let body = segment.slice(firstNewline + 1, lastNewline);
+  if (range.format === "legacy") {
+    const metadataEnd = body.indexOf("\n");
+    if (metadataEnd === -1 || !body.startsWith("<!-- harness-workshop:source ")) {
+      throw new ManagedContentError(`Missing managed metadata: ${id}`);
+    }
+    body = body.slice(metadataEnd + 1);
   }
-  return normalizeText(body.slice(metadataEnd + 1));
+  return normalizeText(body);
 }
 
 export function upsertClaudeBridge(document) {
@@ -54,23 +56,37 @@ export function removeClaudeBridge(document) {
 }
 
 export function findManagedRange(document, id) {
-  const startMarker = `<!-- harness-workshop:start ${id} -->`;
-  const endMarker = `<!-- harness-workshop:end ${id} -->`;
-  const starts = occurrences(document, startMarker);
-  const ends = occurrences(document, endMarker);
-  if (!starts.length && !ends.length) return null;
-  if (starts.length !== 1 || ends.length !== 1 || ends[0] < starts[0]) {
+  const formats = [
+    { format: "compact", startMarker: `<!--hw:${id}-->`, endMarker: `<!--/hw:${id}-->` },
+    {
+      format: "legacy",
+      startMarker: `<!-- harness-workshop:start ${id} -->`,
+      endMarker: `<!-- harness-workshop:end ${id} -->`,
+    },
+  ].map((candidate) => ({
+    ...candidate,
+    starts: occurrences(document, candidate.startMarker),
+    ends: occurrences(document, candidate.endMarker),
+  }));
+  const startCount = formats.reduce((sum, candidate) => sum + candidate.starts.length, 0);
+  const endCount = formats.reduce((sum, candidate) => sum + candidate.ends.length, 0);
+  if (!startCount && !endCount) return null;
+  const match = formats.find((candidate) => candidate.starts.length === 1 && candidate.ends.length === 1);
+  if (startCount !== 1 || endCount !== 1 || !match || match.ends[0] < match.starts[0]) {
     throw new ManagedContentError(`Ambiguous managed boundaries for ${id}`);
   }
-  return { start: starts[0], end: ends[0] + endMarker.length };
+  return {
+    start: match.starts[0],
+    end: match.ends[0] + match.endMarker.length,
+    format: match.format,
+  };
 }
 
-function managedSegment(id, version, digest, content) {
+function managedSegment(id, content) {
   return [
-    `<!-- harness-workshop:start ${id} -->`,
-    `<!-- harness-workshop:source ${id}@${version} integrity ${digest} -->`,
+    `<!--hw:${id}-->`,
     content.trimEnd(),
-    `<!-- harness-workshop:end ${id} -->`,
+    `<!--/hw:${id}-->`,
   ].join("\n");
 }
 

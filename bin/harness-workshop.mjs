@@ -4,6 +4,7 @@ import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import {
   availableWithAdapters,
+  getComponent,
   listComponents,
   requireComponent,
   suggested,
@@ -23,12 +24,14 @@ import {
 import {
   formatApplySummary,
   formatBanner,
+  formatBlockCost,
   formatCatalog,
   formatDryRunFooter,
   formatHealthy,
   formatListHeader,
   formatProgress,
   formatProjectScan,
+  formatSelection,
   orderedComponents,
   sectionKind,
 } from "../src/ui.mjs";
@@ -73,42 +76,73 @@ async function initialize({ cwd, home, flags }) {
   const existing = readManifest(cwd);
   const detected = detectStack(cwd);
   const stack = humanSummary(detected);
-  maybeBanner("Shape a complete, portable agent workspace.");
+  maybeBanner("Find the minimum durable guidance this repository needs.");
 
   let adapters = flags.adapters ?? existing?.adapters ?? [];
   let defaultScope = flags.scope ?? "project";
-  let selectedIds;
+  let selectedIds = [];
 
   const catalog = listComponents();
   const installedIds = new Set(existing?.components.map(({ id }) => id) ?? []);
-  const candidates = flags.adapters === null
-    ? catalog
-    : catalog.filter((component) => availableWithAdapters(component, adapters));
-  const defaults = candidates
-    .filter((component) => !installedIds.has(component.id)
-      && availableWithAdapters(component, adapters)
-      && suggested(component, detected).pick)
-    .map(({ id }) => id);
+  const blocks = catalog.filter((component) => component.kind === "block" && !installedIds.has(component.id));
+  const recommendedBlocks = blocks.filter((component) => suggested(component, detected).pick);
   console.log(formatProjectScan({
     cwd,
     stack,
-    catalogSize: candidates.length,
-    suggestedCount: defaults.length,
+    catalogSize: catalog.length,
+    suggestedCount: recommendedBlocks.length,
     installedCount: installedIds.size,
   }));
 
   if (flags.yes) {
-    selectedIds = defaults;
-    console.log(`${formatProgress("Stack-aware selection")} · ${selectedIds.length} recommendation${selectedIds.length === 1 ? "" : "s"}`);
+    console.log(`${formatProgress("Assessment complete")} · no components installed automatically`);
   } else {
-    if (!process.stdin.isTTY) throw new Error("Interactive init needs a terminal; use --yes or add components explicitly");
+    if (!process.stdin.isTTY && !flags.interactive) {
+      throw new Error("Interactive init needs a terminal; use --yes, --interactive, or add components explicitly");
+    }
     const prompt = readline.createInterface({ input, output });
     try {
-      selectedIds = await chooseComponents(prompt, candidates, detected, installedIds, defaults);
+      if (blocks.length) {
+        selectedIds = await chooseComponents(prompt, blocks, detected, installedIds, []);
+        if (selectedIds.length) {
+          const selectedBlocks = selectedIds.map((id) => requireComponent(id));
+          console.log("");
+          console.log(formatSelection(selectedBlocks));
+          if (selectedIds.length === blocks.length && blocks.length > 1) {
+            const accepted = await askYesNo(
+              prompt,
+              `Install all available blocks (${formatBlockCost(selectedBlocks)})?`,
+              false,
+            );
+            if (!accepted) selectedIds = [];
+          }
+        }
+      } else {
+        console.log(`${formatProgress("Instruction blocks")} · all available blocks are already installed`);
+      }
+
+      if (flags.adapters?.length !== 0
+        && await askYesNo(prompt, "Configure optional agent integrations?", false)) {
+        const result = await chooseIntegrations({
+          prompt,
+          catalog,
+          detected,
+          installedIds,
+          adapters,
+          explicitAdapters: flags.adapters,
+        });
+        adapters = result.adapters;
+        selectedIds.push(...result.selectedIds);
+      }
       if (selectedIds.length) defaultScope = flags.scope ?? await chooseScope(prompt, defaultScope);
     } finally {
       prompt.close();
     }
+  }
+
+  if (!existing && !selectedIds.length) {
+    console.log("No components selected. Repository left unchanged.");
+    return;
   }
 
   const selectedComponents = selectedIds.map((id) => requireComponent(id));
@@ -143,10 +177,12 @@ async function add({ cwd, home, flags, values }) {
   const detected = detectStack(cwd);
   let selectedIds = values;
   let interactiveDefaultScope = null;
-  maybeBanner("Add another capability to the workshop.");
+  maybeBanner("Add one explicit capability to the workshop.");
 
   if (!selectedIds.length) {
-    if (!process.stdin.isTTY) throw new Error("Usage: harness-workshop add <component> [component...]");
+    if (!process.stdin.isTTY && !flags.interactive) {
+      throw new Error("Usage: harness-workshop add <component> [component...] or add --interactive");
+    }
     const adapters = flags.adapters ?? existing?.adapters ?? [];
     const installedIds = new Set(existing?.components.map(({ id }) => id) ?? []);
     const candidates = (flags.adapters === null
@@ -213,7 +249,7 @@ async function remove({ cwd, home, flags, values }) {
     manifest,
     flags,
     writeManifest: true,
-    displayComponents: values.map((id) => requireComponent(id)),
+    displayComponents: values.map((id) => getComponent(id)).filter(Boolean),
     action: "Components removed",
   });
 }
@@ -224,6 +260,11 @@ async function plan({ cwd, home, flags }) {
   const result = await reconcile({ cwd, home, manifest, previousLock, force: flags.force });
   const paths = statePaths(cwd);
   result.planner.write(paths.lock, jsonDocument(result.lock), { allowExisting: true });
+  const components = manifest.components.map(({ id }) => requireComponent(id));
+  if (components.some(({ kind }) => kind === "block")) {
+    console.log(formatSelection(components));
+    console.log("");
+  }
   console.log(formatPlan(result.planner));
 }
 
@@ -297,6 +338,11 @@ async function applyDesired({
   result.planner.write(paths.lock, jsonDocument(result.lock), { allowExisting: true });
 
   if (flags.dryRun) {
+    const components = manifest.components.map(({ id }) => requireComponent(id));
+    if (components.some(({ kind }) => kind === "block")) {
+      console.log(formatSelection(components));
+      console.log("");
+    }
     console.log(formatPlan(result.planner));
     console.log("");
     console.log(formatDryRunFooter());
@@ -319,6 +365,53 @@ async function chooseScope(prompt, fallback) {
   const scope = answer.trim() || fallback;
   if (!new Set(["project", "user"]).has(scope)) throw new Error(`Invalid scope: ${scope}`);
   return scope;
+}
+
+async function askYesNo(prompt, question, fallback) {
+  const hint = fallback ? "Y/n" : "y/N";
+  const answer = (await prompt.question(`${question} [${hint}]: `)).trim().toLowerCase();
+  if (!answer) return fallback;
+  if (new Set(["y", "yes"]).has(answer)) return true;
+  if (new Set(["n", "no"]).has(answer)) return false;
+  throw new Error(`Expected yes or no: ${answer}`);
+}
+
+async function chooseIntegrations({
+  prompt,
+  catalog,
+  detected,
+  installedIds,
+  adapters,
+  explicitAdapters,
+}) {
+  const supported = [...new Set(catalog
+    .filter(({ kind }) => kind === "plugin")
+    .flatMap((component) => component.adapters ?? []))];
+  const availableAdapters = explicitAdapters === null
+    ? supported
+    : supported.filter((adapter) => explicitAdapters.includes(adapter));
+  if (!availableAdapters.length) {
+    console.log(`${formatProgress("Agent integrations")} · none available for the selected adapters`);
+    return { adapters, selectedIds: [] };
+  }
+  const fallback = availableAdapters.find((adapter) => adapters.includes(adapter)) ?? availableAdapters[0];
+  const answer = (await prompt.question(`Agent for integrations (${availableAdapters.join("/")}) [${fallback}]: `)).trim();
+  const adapter = answer || fallback;
+  if (!availableAdapters.includes(adapter)) throw new Error(`Unsupported integration agent: ${adapter}`);
+  const selectedAdapters = [...new Set([...adapters, adapter])];
+
+  const candidates = catalog.filter((component) => component.kind === "plugin"
+    && !installedIds.has(component.id)
+    && availableWithAdapters(component, [adapter]));
+  if (!candidates.length) {
+    console.log(`${formatProgress("Agent integrations")} · none available for ${selectedAdapters.join(", ")}`);
+    return { adapters: selectedAdapters, selectedIds: [] };
+  }
+  const selectedIds = await chooseComponents(prompt, candidates, detected, installedIds, []);
+  return {
+    adapters: selectedIds.length ? selectedAdapters : adapters,
+    selectedIds,
+  };
 }
 
 async function chooseComponents(prompt, components, detected, installedIds = new Set(), defaultIds = null) {
@@ -388,6 +481,7 @@ function parseArguments(argv) {
     dryRun: false,
     force: false,
     help: false,
+    interactive: false,
     scope: null,
     adapters: null,
     version: false,
@@ -401,6 +495,7 @@ function parseArguments(argv) {
     if (value === "-h" || value === "--help") flags.help = true;
     else if (value === "--version") flags.version = true;
     else if (value === "-y" || value === "--yes") flags.yes = true;
+    else if (value === "--interactive") flags.interactive = true;
     else if (value === "--dry-run") flags.dryRun = true;
     else if (value === "--force") flags.force = true;
     else if (value === "--scope" || value === "--adapter" || value === "--adapters"
@@ -454,8 +549,8 @@ function printHelp() {
   console.log(`harness-workshop ${version}
 
 Usage:
-  harness-workshop init [--yes] [--adapter claude|grok]
-  harness-workshop list [blocks|skills|commands|hooks|integrations|tools]
+  harness-workshop init [--interactive|--yes] [--adapter claude|grok]
+  harness-workshop list [blocks|skills|commands|integrations]
   harness-workshop add [component...] [--scope project|user] [--adapter claude|grok]
   harness-workshop plan
   harness-workshop remove <component...>
@@ -463,7 +558,8 @@ Usage:
   harness-workshop doctor
 
 Options:
-  -y, --yes       Use stack-aware defaults during init
+  -y, --yes       Assess without installing recommendations automatically
+  --interactive   Prompt even when standard input is piped
   --dry-run       Print exact changes without writing
   --force         Replace drifted managed content
   --scope VALUE   Default project or user scope
@@ -474,15 +570,15 @@ Options:
 Portable content installs canonically for every agent. Codex and Grok read the
 canonical files directly; adapters add only vendor-specific edges.
 
+Start with list blocks and add explicit block IDs. init may validly select
+none; skills, commands, and integrations are secondary opt-in capabilities.
+
 Component sections:
   blocks        Always-on text managed inside AGENTS.md
   skills        On-demand knowledge and workflows
   commands      Explicit Agent Skills invoked as $name in Codex or /name in Grok
-  hooks         Opt-in event automation
   integrations  Vendor-native plugins and language servers
-  tools         Manual external-tool recommendations
-
-External tool commands are printed for review and never executed.`);
+`);
 }
 
 main().catch((error) => {

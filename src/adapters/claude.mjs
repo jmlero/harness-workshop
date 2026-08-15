@@ -35,17 +35,6 @@ export class ClaudeSettingsEditor {
     removeEmptyObject(scoped.data, "enabledPlugins");
   }
 
-  enableHook(scope, command) {
-    const scoped = this.get(scope);
-    scoped.data.hooks ??= {};
-    scoped.data.hooks.PreToolUse ??= [];
-    if (containsHook(scoped.data.hooks.PreToolUse, command)) return;
-    scoped.data.hooks.PreToolUse.push({
-      matcher: "Bash",
-      hooks: [{ type: "command", command }],
-    });
-  }
-
   disableHook(scope, command) {
     const scoped = this.get(scope);
     const entries = scoped.data.hooks?.PreToolUse;
@@ -87,13 +76,6 @@ export function settingsPath(scope, { cwd, home }) {
   throw new Error(`Unknown Claude settings scope: ${scope}`);
 }
 
-export function hookCommand(scope, { cwd, home }) {
-  if (scope === "project") {
-    return '"$CLAUDE_PROJECT_DIR"/.claude/hooks/harness-workshop/slim-cli.sh';
-  }
-  return shellQuote(path.join(home, ".claude", "hooks", "harness-workshop", "slim-cli.sh"));
-}
-
 function containsHook(entries, command) {
   return entries.some((entry) => Array.isArray(entry?.hooks)
     && entry.hooks.some((hook) => hook?.type === "command" && hook.command === command));
@@ -101,8 +83,4 @@ function containsHook(entries, command) {
 
 function removeEmptyObject(parent, key) {
   if (parent[key] && !Object.keys(parent[key]).length) delete parent[key];
-}
-
-function shellQuote(value) {
-  return `'${value.replaceAll("'", `'"'"'`)}'`;
 }

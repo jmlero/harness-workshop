@@ -1,228 +1,174 @@
-# `harness-workshop` Vision
+# `harness-workshop` vision
 
 ## The idea
 
-`harness-workshop` is an agent-agnostic toolkit for starting and shaping
-software projects. From a new or existing repository, one CLI should be able to
-install a curated set of:
+`harness-workshop` adds the minimum durable agent guidance that a repository
+actually needs. Its first-class product is a library of short, independently
+selectable instruction blocks installed directly in `AGENTS.md`.
 
-- instruction blocks in `AGENTS.md`;
-- on-demand skills;
-- explicit commands for repeatable workflows;
-- specialized agent definitions;
-- automation hooks; and
-- reusable profiles that combine them.
+The CLI may also install on-demand skills, explicit workflow commands, and
+optional agent-native integrations. Those are secondary surfaces. A repository
+that already explains itself and needs no extra guidance is a successful no-op,
+not an incomplete installation.
 
-The goal is not to hide the underlying files. `harness-workshop` should create
-small, readable, version-controlled artifacts that continue to work without the
-CLI.
+The generated files remain small, readable, version-controlled, and useful
+without the CLI.
 
-## Why it should exist
+## Central thesis
 
-Every new project repeats the same setup: establish working agreements, copy
-useful skills, configure agents, and wire up automation. Existing toolkits tend
-to be tied to one agent, require manual installation, or load more instruction
-text than the task needs.
+Good guidance is the smallest set of instructions that reliably changes task
+outcomes for the better.
 
-`harness-workshop` should make the best parts of a personal development workflow
-portable across projects and agents. It should favor focused instructions that
-consume less context while preserving—or improving—task quality.
+The product optimizes for task success per context token, not brevity alone. A
+short rule must still preserve correctness and safety. As models gain reliable
+capabilities, the corresponding harness should shrink: shorten the guidance,
+move it on demand, or delete it.
 
-## The central thesis
+Recommendations require a repository signal and eventually evaluation evidence.
+Nothing is installed merely because it exists in the catalog.
 
-Good agent guidance is not the longest or shortest prompt. It is the smallest
-set of instructions that reliably produces the desired behavior.
+## Guidance routing
 
-`harness-workshop` will optimize for **task success per context token**, not
-brevity alone. A compact skill still needs a precise trigger, a clear outcome,
-essential safety constraints, a usable workflow, and a way to verify completion.
-Detail that is only occasionally useful should be loaded on demand rather than
-placed in every session.
+| Surface | Correct use | Loading |
+|---|---|---|
+| Direct block | Atomic behavior needed across most relevant repository changes | Always through `AGENTS.md` |
+| Skill | A recognizable task with a procedure, examples, or references | On demand |
+| Command | A workflow that should run only when explicitly invoked | Explicit |
+| Reference | Background detail used by a skill, not a standalone behavior | Selective |
+| Integration | Vendor-native capability with an operational prerequisite | Optional and agent-specific |
+| Nothing | Facts or behavior reliably inferable from code, configuration, or current models | No context cost |
 
-Claims that a compact skill is better should be supported by repeatable
-evaluations against representative tasks and, when applicable, its upstream
-version.
+A block must declare a stable ID, semantic version, project scope, source,
+loading mode, behavioral outcome, and reason it deserves always-loaded context.
+Its exact word count and token estimate are derived from normalized content.
+
+Task-specific guidance does not become a block merely because it is short.
+Background information does not become a skill merely because a file exists.
 
 ## Product principles
 
-### Agent-agnostic core, vendor-aware edges
+### Block-first, agent-agnostic core
 
-`AGENTS.md` is the canonical project instruction file. Portable content is
-defined once. Thin adapters translate capabilities into the conventions of
-Claude Code, Codex, and other supported agents.
+`AGENTS.md` is the canonical portable project instruction file. Blocks are
+defined once and embedded directly, without mandatory links whose only purpose
+is recovering a few lines of required text.
 
-Portable content does not declare vendor targets. It installs canonically and
-is available to every agent that reads the standard files. Adapters are
-optional, explicit edges used only when an agent needs a bridge, alternate
-layout, or native integration. Codex and Grok Build consume `AGENTS.md` and
-`.agents/skills` directly; the Claude adapter exposes those files through
-Claude conventions.
+Portable skills and commands live in `.agents/skills`. Codex and Grok Build use
+the canonical files directly. Thin adapters expose them to other agents without
+duplicating the core content.
 
-Portability does not mean pretending every agent has the same features:
+For Claude Code, `CLAUDE.md` should be a symlink to `AGENTS.md` when a new bridge
+can be created safely. An existing user-authored `CLAUDE.md` is preserved and
+receives a managed `@AGENTS.md` import instead. Claude-only guidance remains an
+intentional overlay rather than being copied into the portable file.
 
-- instruction blocks can usually be shared directly;
-- skills can share core Markdown while adapters supply agent-specific metadata
-  and install paths;
-- commands use the portable Agent Skills format with explicit invocation;
-  adapters may expose native slash-command syntax without copying the workflow;
-- agent definitions need a portable role and task contract plus optional native
-  representations;
-- hooks are capability-specific and must declare which agents they support.
+### Assessment before installation
 
-Shared filenames do not imply shared configuration. Grok does not import Codex
-configuration, plugins, MCP servers, hooks, or subagent definitions from
-`.codex`; each non-portable surface needs a tested adapter or an explicit gap.
+Initialization starts with portable blocks. Users see each block's exact word
+count and estimated token cost, then choose numbers, ranges, `all`, or `none`.
+Selecting all requires seeing and accepting the aggregate cost.
 
-When a feature has no native equivalent, `harness-workshop` should explain the
-limitation and install a safe fallback where possible. It must not silently
-claim portability.
+Only after the block decision may the user enter the optional integration
+stage, choose an agent, and inspect compatible plugins. Skills and commands stay
+available through explicit `add` operations or a deliberately requested
+secondary catalog workflow.
 
-For Claude Code, a project may expose the canonical instructions through a
-`CLAUDE.md` symlink or another explicit compatibility bridge. Generated bridges
-must make their source clear and avoid independent copies that can drift.
+Non-interactive assessment never interprets a recommendation as consent to
+modify the repository.
 
-### Small by default, detailed on demand
+### Context is a maintained budget
 
-Always-loaded project instructions have a strict context budget. Stable rules
-belong in `AGENTS.md`; task-specific procedures belong in skills; large examples
-and references belong in files loaded only when required.
+Always-loaded rules must be atomic, concise, and broadly applicable to the
+repositories that adopt them. Detailed procedures and current framework
+knowledge belong on demand. Large examples and references are loaded only when
+needed.
 
-Each package should state its expected context cost and justify always-on text.
-Profiles should install only what the project needs, based on transparent stack
-detection and user choice.
+The CLI shows individual and aggregate context costs before applying blocks.
+Catalog review applies deletion pressure: retain, shorten, demote, replace, or
+remove each component.
 
-### Declarative and repeatable
+### Declarative and reversible
 
-A project records what `harness-workshop` installed in a small manifest and
-lockfile. Every component has a stable ID, version, source, and integrity
-information. Portable is the default; vendor-specific components declare their
-supported adapters.
+Every managed component has a stable identity, source, version, scope, and
+integrity record. Operations are idempotent, reversible, inspectable,
+updateable, and reproducible.
 
-Operations must be:
+`AGENTS.md` uses compact ownership boundaries. Versions and checksums live in
+the lockfile rather than being repeated inside the prompt. Legacy boundaries
+remain readable for safe migration.
 
-- idempotent: applying the same configuration twice produces no extra changes;
-- reversible: a component can be removed without damaging user-authored text;
-- inspectable: users can preview the exact file changes before applying them;
-- updateable: managed content can evolve without overwriting local content; and
-- reproducible: a teammate or CI job can apply the same profile later.
+The CLI never overwrites unowned content. Ambiguous ownership or local drift is
+reported and requires explicit resolution.
 
-Instruction blocks in `AGENTS.md` therefore need explicit managed boundaries.
-`harness-workshop` should merge, replace, and remove blocks by ID rather than
-append unstructured text.
+### Integrations tell the operational truth
 
-### Safe and unsurprising
+Plugins are settings and runtime integrations, not prompt components. They must
+declare the agent they support, current marketplace identity, last verification
+date, and required executables. The CLI must not call an integration healthy
+when a known prerequisite is absent.
 
-`harness-workshop` must preserve existing files and ask before resolving
-ambiguous conflicts. Remote content should be pinned and attributable, with
-checksums or a lockfile. Installation should never require executing unreviewed
-code merely to inspect a package.
+External products that the CLI merely recommends are not managed components.
+They belong outside the desired-state manifest until the CLI can install,
+verify, update, and remove them honestly.
 
-Hooks deserve extra caution. A hook that truncates output, rewrites a command,
-or changes flags can hide a failure or alter behavior. Hooks must be opt-in,
-target-specific, testable, and explicit about semantic changes. Saving tokens is
-never a reason to discard information required to diagnose a problem.
+### Small coherent catalog
 
-### Personal first, useful to others
+The catalog exists first to encode one trusted workflow well. Similar tools are
+not carried as undifferentiated alternatives. Broad methodology bundles are not
+combined with overlapping local rules without explicit conflict handling and
+evidence that the combination helps.
 
-`harness-workshop` exists first to encode one opinionated workflow well. It
-should not begin as a universal agent package manager. Its catalog can be public
-and extensible, but a small coherent collection is more valuable than broad
-support for uncurated packages.
+Remote content is pinned, attributable, license-preserving, bounded, and loaded
+on demand.
 
-## The intended experience
-
-The CLI and its executable are named `harness-workshop`.
-
-The CLI should make common workflows obvious:
+## Intended experience
 
 ```text
-harness-workshop init                 # inspect the project and propose a profile
-harness-workshop add block/tdd        # manage a block in AGENTS.md
-harness-workshop add skill/review-pr  # install once in the canonical skill path
-harness-workshop add command/verify-work # add an explicitly invoked workflow
-harness-workshop add agent/reviewer   # add a reusable specialist where supported
-harness-workshop add hook/slim-cli    # install an explicit adapter-specific hook
-harness-workshop plan                 # preview all changes
-harness-workshop remove <component>   # cleanly undo a managed installation
-harness-workshop update               # update pinned components with a visible diff
-harness-workshop doctor               # detect drift, conflicts, and unsupported features
+harness-workshop init                       # assess blocks, optionally integrations
+harness-workshop init --yes                 # assess and leave unchanged
+harness-workshop list blocks                # see exact word/token costs
+harness-workshop add block/completion-evidence
+harness-workshop add skill/verify-frontend
+harness-workshop add command/verify-work
+harness-workshop add plugin/github          # optional Claude edge
+harness-workshop plan                       # preview exact changes
+harness-workshop remove <component>         # remove only owned state
+harness-workshop update                     # refresh visible, pinned content
+harness-workshop doctor                     # detect drift and missing prerequisites
 ```
 
-Interactive stack-aware suggestions are useful, but the resulting configuration
-must also support non-interactive use in scripts and CI.
-
-## What carries forward from `claude-toolkit`
-
-The existing `claude-toolkit` proves several useful ideas:
-
-- one command can inspect a repository and suggest relevant components;
-- a manifest can act as the catalog's source of truth;
-- dry runs and project/user scopes improve installation safety;
-- context fragments, skills, hooks, plugins, and external tools need distinct
-  installation behavior.
-
-`harness-workshop` generalizes that foundation. Claude marketplace settings
-become one adapter rather than the core model. `CLAUDE.md` context fragments
-become managed `AGENTS.md` blocks. Skills are stored in a portable source form
-and rendered to agent-native layouts. Agent-specific plugins and hooks remain
-available without defining the whole architecture.
-
-## Initial scope
-
-The first port retains the complete useful `claude-toolkit` catalog, including
-stack-aware suggestions, external-tool guidance, Claude marketplace entries,
-and the opt-in `slim-cli` hook. Its core maturity priorities remain:
-
-1. A package format and local catalog for instruction blocks and skills.
-2. Idempotent `AGENTS.md` management with preview, removal, updates, and drift
-   detection.
-3. Canonical files that Codex can consume directly, plus a Claude adapter that
-   exposes the same portable packages without maintaining separate copies.
-
-The carried-over hook and vendor integrations must remain isolated adapters;
-they do not justify adding new hooks, profiles, or agent definitions before the
-portable content and installation model are stable.
+Normal output is compact and sectioned. Exact bodies are reserved for `plan`
+and `--dry-run`.
 
 ## Explicit non-goals
 
-- Normalizing every feature of every coding agent.
-- Loading the full toolkit into every conversation.
-- Automatically installing every recommended third-party tool.
-- Replacing native package managers or agent marketplaces.
-- Claiming that fewer tokens improve results without measurement.
-- Mutating user-authored instructions that `harness-workshop` does not own.
+- Becoming a universal agent package manager.
+- Installing universal defaults into every repository.
+- Loading detailed task procedures in every session.
+- Treating every third-party recommendation as managed state.
+- Normalizing agent-native features that have no safe equivalent.
+- Claiming fewer tokens improve results without representative evaluation.
+- Mutating user-authored instructions that the workshop does not own.
 
 ## Risks to keep visible
 
-- The lowest common denominator could make portable skills too weak. Shared
-  content should remain expressive, with adapters adding capability rather than
-  stripping it away.
-- Excessive compression can remove the constraints that make a skill reliable.
-  Context budgets need evaluations, not arbitrary line limits.
-- A growing catalog can recreate the context and maintenance bloat
-  `harness-workshop` is meant to solve. Every component needs a clear owner,
-  trigger, and reason to exist.
-- Upstream skills change. Forked compact versions require attribution, license
-  compliance, version tracking, and periodic comparison.
-- Symlinks and agent configuration paths are not equally portable across
-  operating systems. Adapters need an explicit fallback strategy.
+- Over-compression can remove constraints that make guidance reliable.
+- Weak recommendation signals can turn optional policy into accidental defaults.
+- A growing catalog can recreate the context and maintenance bloat it opposes.
+- Marketplace identifiers, prerequisites, and remote skills change over time.
+- Symlinks are not equally portable; bridges require a safe import fallback.
 - The `harness-workshop` name still needs registry, executable, domain, and
-  trademark checks before a public release.
+  trademark checks before public release.
 
 ## Definition of success
 
 `harness-workshop` succeeds when:
 
-- a new repository can adopt an opinionated agent setup in minutes;
-- the proposed and applied changes are understandable from a normal Git diff;
-- running the same installation twice produces no changes;
-- every managed component can be updated or removed cleanly;
-- projects pay context cost only for guidance relevant to the current task;
-- one portable component works in at least two supported agents without
-  maintaining separate copies of its core instructions; and
-- compact skills match or outperform their reference versions in repeatable
-  task evaluations while using materially less context.
-
-The long-term outcome is a small, trusted toolbox that gives any supported agent
-the right project knowledge at the right time—without turning the context window
-into a dumping ground.
+- a user encounters concise portable blocks before any vendor choice;
+- selecting nothing is a clear, successful outcome;
+- every block exposes its individual and aggregate context cost;
+- the same installation applied twice produces no changes;
+- every managed component can be inspected, updated, and removed safely;
+- agent integrations remain optional and verify known prerequisites;
+- portable content works in multiple agents without duplicated core text; and
+- periodic evaluation causes obsolete guidance to shrink or disappear.

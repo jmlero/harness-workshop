@@ -13,8 +13,6 @@ remain vendor-specific.
 | Instructions | Both discover repository `AGENTS.md` from root to working directory. | Native |
 | Skills | Both discover `.agents/skills/<name>/SKILL.md`. | Native |
 | Commands | The canonical skill works in both. `--adapter grok` adds a metadata-only wrapper that enforces slash-only invocation without copying the workflow. Invoke `$name` in Codex or `/name` in Grok. | Supported |
-| `slim-cli` hook | One script handles both hook payload styles; `--adapter grok` writes native `.grok/hooks` registration. | Supported |
-| External tools | The workshop prints setup commands for human review and does not depend on an agent runtime. | Portable, manual |
 | Plugins | Current `plugin/*` entries install through the Claude adapter. Grok and Codex use different native packaging and trust flows. | Not ported |
 | Config and MCP | `.codex/config.toml` is not imported by Grok; Grok uses `.grok/config.toml`. | No automatic translation |
 | Agents and subagents | No portable component is currently shipped, and native definitions differ. | Not supported |
@@ -39,25 +37,12 @@ them automatically:
 harness-workshop add command/verify-work --adapter grok
 ```
 
-Add the native Grok hook edge explicitly:
-
-```bash
-harness-workshop add hook/slim-cli --adapter grok
-grok inspect --json
-```
-
-The hook defaults to user scope, where Grok trusts it as personal
-configuration. If you install it with `--scope project`, review the files and
-trust the project with `/hooks-trust` before expecting it to run.
-
 ## Verification performed
 
-- Installed a block, a normal skill, an explicit command, and the Grok hook in
-  an isolated project and home directory.
+- Installed a block, a normal skill, and an explicit command in an isolated
+  project and home directory.
 - Used `grok inspect --json` to confirm discovery of `AGENTS.md`, canonical
-  `.agents/skills`, the explicit command wrapper, and the native hook.
-- Exercised the hook with Claude/Codex-style snake_case input and Grok-style
-  camelCase input, confirming the same safe command rewrite.
+  `.agents/skills`, and the explicit command wrapper.
 - Ran the complete workshop test and syntax-check suite.
 
 ## Primary references

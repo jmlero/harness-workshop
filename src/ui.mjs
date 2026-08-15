@@ -1,8 +1,10 @@
+import { aggregateContextCost, componentContextCost } from "./catalog.mjs";
+
 const sections = [
   {
     kind: "block",
     title: "Instruction blocks",
-    description: "Always-on guidance merged safely into AGENTS.md",
+    description: "Always-on guidance inside owned AGENTS.md markers; existing text is preserved",
   },
   {
     kind: "skill",
@@ -15,19 +17,9 @@ const sections = [
     description: "Explicit skills invoked as $name in Codex or /name in Grok and Claude",
   },
   {
-    kind: "hook",
-    title: "Hooks & automation",
-    description: "Opt-in event automation for agents that support it",
-  },
-  {
     kind: "plugin",
     title: "Agent integrations",
     description: "Vendor-native plugins, language servers, and marketplaces",
-  },
-  {
-    kind: "tool",
-    title: "External tools",
-    description: "Recommended tools shown as manual, reviewable setup steps",
   },
 ];
 
@@ -40,22 +32,17 @@ const sectionAliases = new Map([
   ["skills", "skill"],
   ["command", "command"],
   ["commands", "command"],
-  ["hook", "hook"],
-  ["hooks", "hook"],
-  ["automation", "hook"],
   ["plugin", "plugin"],
   ["plugins", "plugin"],
   ["integration", "plugin"],
   ["integrations", "plugin"],
-  ["tool", "tool"],
-  ["tools", "tool"],
 ]);
 
 export function sectionKind(value) {
   if (!value || value === "all") return null;
   const kind = sectionAliases.get(value.toLowerCase());
   if (!kind) {
-    throw new Error(`Unknown section: ${value}. Use blocks, skills, commands, hooks, integrations, or tools.`);
+    throw new Error(`Unknown section: ${value}. Use blocks, skills, commands, or integrations.`);
   }
   return kind;
 }
@@ -126,7 +113,16 @@ export function formatSelection(components) {
     const ids = components.filter((component) => component.kind === section.kind).map(({ id }) => id);
     if (ids.length) lines.push(`${section.title.padEnd(20)} ${ids.join(", ")}`);
   }
+  const context = aggregateContextCost(components);
+  if (context.words) {
+    lines.push(`Always-loaded text   ${context.words} words · ~${context.estimatedTokens} tokens`);
+  }
   return formatStage("Selected components", lines.length ? lines : [paint("2", "None")]);
+}
+
+export function formatBlockCost(components) {
+  const context = aggregateContextCost(components);
+  return `${components.length} block${components.length === 1 ? "" : "s"} · ${context.words} words · ~${context.estimatedTokens} tokens`;
 }
 
 export function formatProgress(message) {
@@ -205,8 +201,12 @@ function componentMetadata(component, recommendation) {
       none: "no prompt context",
     }[component.context.loading] ?? component.context.loading;
     parts.push(loading);
-    if (component.context.estimatedTokens) parts.push(`~${component.context.estimatedTokens} tokens`);
+    const cost = componentContextCost(component);
+    if (component.kind === "block") parts.push(`${cost.words} words`);
+    if (cost.estimatedTokens) parts.push(`~${cost.estimatedTokens} tokens`);
   }
+  if (component.requires?.commands?.length) parts.push(`requires ${component.requires.commands.join(", ")}`);
+  if (component.conflictsWith?.length) parts.push(`conflicts with ${component.conflictsWith.join(", ")}`);
   if (recommendation.pick && recommendation.reason) parts.push(`suggested: ${recommendation.reason}`);
   return parts.join(" · ");
 }

@@ -9,10 +9,11 @@
       "name": "Test-driven development",
       "category": "Development methodology",
       "description": "A compact Red-Green-Refactor agreement managed in AGENTS.md.",
+      "outcome": "Features and bug fixes begin with a behavioral test and finish with relevant checks passing.",
+      "alwaysOnJustification": "The agreement changes implementation order throughout feature and bug-fix work.",
       "scopes": ["project"],
       "content": { "kind": "bundled", "path": "blocks/tdd.md" },
-      "context": { "loading": "always", "estimatedTokens": 120 },
-      "suggest": { "when": "always", "reason": "portable development baseline" }
+      "context": { "loading": "always" }
     },
     {
       "id": "block/ponytail",
@@ -21,6 +22,8 @@
       "name": "Minimal implementation",
       "category": "Development methodology",
       "description": "Keep the smallest safe implementation rules always available in AGENTS.md.",
+      "outcome": "Changes meet current requirements without speculative code, dependencies, or abstraction.",
+      "alwaysOnJustification": "The rule applies whenever an agent chooses an implementation approach.",
       "scopes": ["project"],
       "content": {
         "kind": "bundled",
@@ -29,8 +32,103 @@
         "revision": "2ed6c52c9d7e5e56942508591085fd45dea277d3"
       },
       "license": "MIT",
-      "context": { "loading": "always", "estimatedTokens": 110 },
-      "suggest": { "when": "always", "reason": "portable minimal-implementation baseline" }
+      "context": { "loading": "always" }
+    },
+    {
+      "id": "block/completion-evidence",
+      "version": "1.0.0",
+      "kind": "block",
+      "name": "Completion evidence",
+      "category": "Verification",
+      "description": "Require concrete checks and transparent reporting before claiming completion.",
+      "outcome": "Completion claims identify the checks run, failures encountered, and verification skipped.",
+      "alwaysOnJustification": "The rule applies to the completion of every repository task.",
+      "scopes": ["project"],
+      "content": {
+        "kind": "bundled",
+        "path": "blocks/completion-evidence.md",
+        "upstream": "jmlero/app-meerkat",
+        "revision": "51b77a6a0506661979bef8c6b152d8b3d4fcc3ba"
+      },
+      "license": "Apache-2.0",
+      "context": { "loading": "always" }
+    },
+    {
+      "id": "block/transparent-shortcuts",
+      "version": "1.0.0",
+      "kind": "block",
+      "name": "Transparent shortcuts",
+      "category": "Delivery safety",
+      "description": "Make deliberately deferred necessary work visible without inventing speculative debt.",
+      "outcome": "Material deferred work is visible with a concrete reason and risk.",
+      "alwaysOnJustification": "The rule must be available when task scope and implementation tradeoffs are decided.",
+      "scopes": ["project"],
+      "content": {
+        "kind": "bundled",
+        "path": "blocks/transparent-shortcuts.md",
+        "upstream": "jmlero/app-meerkat",
+        "revision": "51b77a6a0506661979bef8c6b152d8b3d4fcc3ba"
+      },
+      "license": "Apache-2.0",
+      "context": { "loading": "always" }
+    },
+    {
+      "id": "block/secure-defaults",
+      "version": "1.0.0",
+      "kind": "block",
+      "name": "Secure defaults",
+      "category": "Security",
+      "description": "Apply concise preventive safeguards at new external boundaries.",
+      "outcome": "New trust boundaries validate and constrain input, protect mutations, and use least privilege.",
+      "alwaysOnJustification": "In repositories with external boundaries, the safeguards affect design before code is written.",
+      "scopes": ["project"],
+      "content": {
+        "kind": "bundled",
+        "path": "blocks/secure-defaults.md",
+        "upstream": "jmlero/app-meerkat",
+        "revision": "51b77a6a0506661979bef8c6b152d8b3d4fcc3ba"
+      },
+      "license": "Apache-2.0",
+      "context": { "loading": "always" }
+    },
+    {
+      "id": "block/ci-production-parity",
+      "version": "1.0.0",
+      "kind": "block",
+      "name": "CI and production parity",
+      "category": "Verification",
+      "description": "Keep CI runtimes and build paths aligned with production behavior.",
+      "outcome": "Runtime and build changes update CI and production paths together and receive equivalent verification.",
+      "alwaysOnJustification": "In repositories with CI and production builds, parity affects dependency, runtime, and deployment changes.",
+      "scopes": ["project"],
+      "content": {
+        "kind": "bundled",
+        "path": "blocks/ci-production-parity.md",
+        "upstream": "jmlero/app-meerkat",
+        "revision": "51b77a6a0506661979bef8c6b152d8b3d4fcc3ba"
+      },
+      "license": "Apache-2.0",
+      "context": { "loading": "always" },
+      "suggest": { "when": { "all": ["hasCI"] }, "reason": "continuous integration detected" }
+    },
+    {
+      "id": "block/no-unfinished-ui",
+      "version": "1.0.0",
+      "kind": "block",
+      "name": "No unfinished UI",
+      "category": "Frontend quality",
+      "description": "Do not expose incomplete product paths without an explicit product reason.",
+      "outcome": "Users see coherent product paths rather than nonfunctional controls or placeholders.",
+      "alwaysOnJustification": "When adopted as product policy, the rule applies across all frontend implementation work.",
+      "scopes": ["project"],
+      "content": {
+        "kind": "bundled",
+        "path": "blocks/no-unfinished-ui.md",
+        "upstream": "jmlero/app-meerkat",
+        "revision": "51b77a6a0506661979bef8c6b152d8b3d4fcc3ba"
+      },
+      "license": "Apache-2.0",
+      "context": { "loading": "always" }
     },
     {
       "id": "skill/audit-code",
@@ -41,8 +139,7 @@
       "description": "Audit security, errors, validation, persistence, infrastructure, tests, and dependencies before release.",
       "scopes": ["project", "user"],
       "content": { "kind": "bundled", "path": "skills/audit-code/SKILL.md" },
-      "context": { "loading": "on-demand", "estimatedTokens": 650 },
-      "suggest": { "when": "always", "reason": "core release-quality workflow" }
+      "context": { "loading": "on-demand" }
     },
     {
       "id": "skill/audit-docs",
@@ -53,8 +150,8 @@
       "description": "Audit documentation for accuracy, staleness, duplication, broken references, and unnecessary context cost.",
       "scopes": ["project", "user"],
       "content": { "kind": "bundled", "path": "skills/audit-docs/SKILL.md" },
-      "context": { "loading": "on-demand", "estimatedTokens": 600 },
-      "suggest": { "when": ["hasDocs"], "reason": "documentation detected" }
+      "context": { "loading": "on-demand" },
+      "suggest": { "when": { "all": ["hasDocs"] }, "reason": "documentation detected" }
     },
     {
       "id": "skill/review-pr",
@@ -65,131 +162,28 @@
       "description": "Review a pull request for correctness, security, tests, compatibility, and project conventions.",
       "scopes": ["project", "user"],
       "content": { "kind": "bundled", "path": "skills/review-pr/SKILL.md" },
-      "context": { "loading": "on-demand", "estimatedTokens": 550 },
-      "suggest": { "when": ["isGitRepo"], "reason": "Git repository detected" }
+      "context": { "loading": "on-demand" }
     },
     {
-      "id": "skill/ponytail",
+      "id": "skill/verify-frontend",
       "version": "1.0.0",
       "kind": "skill",
-      "name": "Ponytail",
-      "category": "Development methodology",
-      "description": "Choose the smallest safe solution without skipping correctness, explicit requirements, or verification.",
+      "name": "Frontend verification",
+      "category": "Frontend quality",
+      "description": "Inspect changed frontend behavior at representative viewports and interaction states.",
       "scopes": ["project", "user"],
       "content": {
         "kind": "bundled",
-        "path": "skills/ponytail/SKILL.md",
-        "upstream": "DietrichGebert/ponytail",
-        "revision": "2ed6c52c9d7e5e56942508591085fd45dea277d3"
+        "path": "skills/verify-frontend/SKILL.md",
+        "upstream": "jmlero/app-meerkat",
+        "revision": "51b77a6a0506661979bef8c6b152d8b3d4fcc3ba"
       },
-      "license": "MIT",
-      "context": { "loading": "on-demand", "estimatedTokens": 330 }
-    },
-    {
-      "id": "command/verify-work",
-      "version": "1.0.0",
-      "kind": "command",
-      "name": "Verify work",
-      "category": "Workflow command",
-      "description": "Run the repository's real checks and report concrete evidence without changing the implementation.",
-      "scopes": ["project", "user"],
-      "content": {
-        "kind": "bundled",
-        "path": "commands/verify-work/SKILL.md",
-        "root": "commands/verify-work"
-      },
-      "context": { "loading": "explicit", "estimatedTokens": 190 },
-      "suggest": { "when": "always", "reason": "reusable evidence-based verification" }
-    },
-    {
-      "id": "command/commit-work",
-      "version": "1.0.0",
-      "kind": "command",
-      "name": "Commit work",
-      "category": "Workflow command",
-      "description": "Review, validate, and create one focused Git commit while preserving unrelated work.",
-      "scopes": ["project", "user"],
-      "content": {
-        "kind": "bundled",
-        "path": "commands/commit-work/SKILL.md",
-        "root": "commands/commit-work"
-      },
-      "context": { "loading": "explicit", "estimatedTokens": 210 },
-      "suggest": { "when": ["isGitRepo"], "reason": "Git repository detected" }
-    },
-    {
-      "id": "hook/slim-cli",
-      "version": "3.0.0",
-      "kind": "hook",
-      "name": "Slim CLI output",
-      "category": "Operations",
-      "description": "Claude and Grok PreToolUse hook that adds safe quiet flags without truncating diagnostics or changing command semantics.",
-      "adapters": ["claude", "grok"],
-      "scopes": ["project", "user"],
-      "recommendedScope": "user",
-      "content": { "kind": "bundled", "path": "hooks/slim-cli/slim-cli.sh" },
-      "context": { "loading": "none", "estimatedTokens": 0 }
-    },
-    {
-      "id": "plugin/frontend-design",
-      "version": "1.0.0",
-      "kind": "plugin",
-      "name": "Frontend design",
-      "category": "Anthropic",
-      "description": "Official Claude plugin for production-grade frontend design.",
-      "adapters": ["claude"],
-      "scopes": ["project", "user"],
-      "adapter": { "claude": { "pluginId": "frontend-design", "marketplace": { "name": "claude-plugins-official", "repo": "anthropics/claude-plugins-official" } } },
-      "suggest": { "when": ["hasReact", "hasNextJs", "hasVue", "hasSvelte"], "reason": "frontend framework detected" }
-    },
-    {
-      "id": "plugin/typescript-lsp",
-      "version": "1.0.0",
-      "kind": "plugin",
-      "name": "TypeScript LSP",
-      "category": "Anthropic",
-      "description": "Official Claude TypeScript language-server integration.",
-      "adapters": ["claude"],
-      "scopes": ["project", "user"],
-      "recommendedScope": "user",
-      "adapter": { "claude": { "pluginId": "typescript-lsp", "marketplace": { "name": "claude-plugins-official", "repo": "anthropics/claude-plugins-official" } } },
-      "suggest": { "when": ["hasTypeScript"], "reason": "TypeScript detected" }
-    },
-    {
-      "id": "plugin/pyright-lsp",
-      "version": "1.0.0",
-      "kind": "plugin",
-      "name": "Pyright LSP",
-      "category": "Anthropic",
-      "description": "Official Claude Python type-checking integration.",
-      "adapters": ["claude"],
-      "scopes": ["project", "user"],
-      "recommendedScope": "user",
-      "adapter": { "claude": { "pluginId": "pyright-lsp", "marketplace": { "name": "claude-plugins-official", "repo": "anthropics/claude-plugins-official" } } },
-      "suggest": { "when": ["hasPython"], "reason": "Python detected" }
-    },
-    {
-      "id": "plugin/github",
-      "version": "1.0.0",
-      "kind": "plugin",
-      "name": "GitHub",
-      "category": "Anthropic",
-      "description": "Official Claude integration for GitHub issues, pull requests, and actions.",
-      "adapters": ["claude"],
-      "scopes": ["project", "user"],
-      "adapter": { "claude": { "pluginId": "github", "marketplace": { "name": "claude-plugins-official", "repo": "anthropics/claude-plugins-official" } } },
-      "suggest": { "when": ["isGitHubRepo"], "reason": "GitHub remote detected" }
-    },
-    {
-      "id": "plugin/terraform",
-      "version": "1.0.0",
-      "kind": "plugin",
-      "name": "HashiCorp Terraform skills",
-      "category": "Community",
-      "description": "HashiCorp skills for HCL, Stacks, modules, and provider development.",
-      "adapters": ["claude"],
-      "scopes": ["project", "user"],
-      "adapter": { "claude": { "pluginId": "terraform", "marketplace": { "name": "hashicorp", "repo": "hashicorp/agent-skills" } } }
+      "license": "Apache-2.0",
+      "context": { "loading": "on-demand" },
+      "suggest": {
+        "when": { "any": ["hasReact", "hasNextJs", "hasVue", "hasSvelte"] },
+        "reason": "frontend framework detected"
+      }
     },
     {
       "id": "skill/terraform-skill",
@@ -210,60 +204,7 @@
       },
       "license": "Apache-2.0",
       "context": { "loading": "on-demand", "estimatedTokens": 5200 },
-      "suggest": { "when": ["hasTerraform"], "reason": "Terraform detected" }
-    },
-    {
-      "id": "plugin/superpowers",
-      "version": "1.0.0",
-      "kind": "plugin",
-      "name": "Superpowers",
-      "category": "Community",
-      "description": "Community methodology skills for TDD, debugging, planning, and verification.",
-      "adapters": ["claude"],
-      "scopes": ["project", "user"],
-      "adapter": { "claude": { "pluginId": "superpowers", "marketplace": { "name": "obra", "repo": "obra/superpowers" } } }
-    },
-    {
-      "id": "plugin/codex",
-      "version": "1.0.0",
-      "kind": "plugin",
-      "name": "Codex for Claude",
-      "category": "Community",
-      "description": "Claude plugin that exposes the Codex CLI as a tool.",
-      "adapters": ["claude"],
-      "scopes": ["project", "user"],
-      "adapter": { "claude": { "pluginId": "codex", "marketplace": { "name": "openai-codex", "repo": "openai/codex-plugin-cc" } } }
-    },
-    {
-      "id": "tool/code-review-graph",
-      "version": "1.0.0",
-      "kind": "tool",
-      "name": "Code Review Graph",
-      "category": "External tool",
-      "description": "Code knowledge graph with blast-radius analysis and incremental indexing.",
-      "scopes": ["user"],
-      "manual": { "install": "pipx install code-review-graph && code-review-graph install", "postInstall": "code-review-graph build" },
-      "suggest": { "when": "always", "reason": "useful on unfamiliar or large repositories" }
-    },
-    {
-      "id": "tool/codegraph",
-      "version": "1.0.0",
-      "kind": "tool",
-      "name": "CodeGraph",
-      "category": "External tool",
-      "description": "Node-based code knowledge graph alternative.",
-      "scopes": ["user"],
-      "manual": { "install": "npx @colbymchenry/codegraph", "postInstall": "codegraph init" }
-    },
-    {
-      "id": "tool/backlog",
-      "version": "1.0.0",
-      "kind": "tool",
-      "name": "Backlog.md",
-      "category": "External tool",
-      "description": "Markdown-native task manager and Kanban UI for Git repositories.",
-      "scopes": ["user"],
-      "manual": { "install": "npm install --global backlog.md", "postInstall": "backlog init" }
+      "suggest": { "when": { "all": ["hasTerraform"] }, "reason": "Terraform detected" }
     },
     {
       "id": "skill/fastapi",
@@ -284,7 +225,115 @@
       },
       "license": "MIT",
       "context": { "loading": "on-demand", "estimatedTokens": 2700 },
-      "suggest": { "when": ["hasFastAPI"], "reason": "FastAPI detected" }
+      "suggest": { "when": { "all": ["hasFastAPI"] }, "reason": "FastAPI detected" }
+    },
+    {
+      "id": "command/verify-work",
+      "version": "1.1.0",
+      "kind": "command",
+      "name": "Verify work",
+      "category": "Workflow command",
+      "description": "Run the repository's real checks and report concrete evidence without changing the implementation.",
+      "scopes": ["project", "user"],
+      "content": {
+        "kind": "bundled",
+        "path": "commands/verify-work/SKILL.md",
+        "root": "commands/verify-work"
+      },
+      "context": { "loading": "explicit" }
+    },
+    {
+      "id": "command/commit-work",
+      "version": "1.0.0",
+      "kind": "command",
+      "name": "Commit work",
+      "category": "Workflow command",
+      "description": "Review, validate, and create one focused Git commit while preserving unrelated work.",
+      "scopes": ["project", "user"],
+      "content": {
+        "kind": "bundled",
+        "path": "commands/commit-work/SKILL.md",
+        "root": "commands/commit-work"
+      },
+      "context": { "loading": "explicit" }
+    },
+    {
+      "id": "plugin/frontend-design",
+      "version": "1.0.0",
+      "kind": "plugin",
+      "name": "Frontend design",
+      "category": "Anthropic",
+      "description": "Official Claude plugin for production-grade frontend design.",
+      "adapters": ["claude"],
+      "scopes": ["project", "user"],
+      "adapter": { "claude": { "pluginId": "frontend-design", "marketplace": { "name": "claude-plugins-official", "repo": "anthropics/claude-plugins-official" } } },
+      "lastVerified": "2026-08-15",
+      "suggest": {
+        "when": { "any": ["hasReact", "hasNextJs", "hasVue", "hasSvelte"] },
+        "reason": "frontend framework detected"
+      }
+    },
+    {
+      "id": "plugin/typescript-lsp",
+      "version": "1.0.0",
+      "kind": "plugin",
+      "name": "TypeScript LSP",
+      "category": "Anthropic",
+      "description": "Official Claude TypeScript language-server integration.",
+      "adapters": ["claude"],
+      "scopes": ["project", "user"],
+      "recommendedScope": "user",
+      "requires": { "commands": ["typescript-language-server"] },
+      "adapter": { "claude": { "pluginId": "typescript-lsp", "marketplace": { "name": "claude-plugins-official", "repo": "anthropics/claude-plugins-official" } } },
+      "lastVerified": "2026-08-15",
+      "suggest": {
+        "when": { "all": ["hasTypeScript", "hasTypeScriptLanguageServer"] },
+        "reason": "TypeScript and its language server detected"
+      }
+    },
+    {
+      "id": "plugin/pyright-lsp",
+      "version": "1.0.0",
+      "kind": "plugin",
+      "name": "Pyright LSP",
+      "category": "Anthropic",
+      "description": "Official Claude Python type-checking integration.",
+      "adapters": ["claude"],
+      "scopes": ["project", "user"],
+      "recommendedScope": "user",
+      "requires": { "commands": ["pyright-langserver"] },
+      "adapter": { "claude": { "pluginId": "pyright-lsp", "marketplace": { "name": "claude-plugins-official", "repo": "anthropics/claude-plugins-official" } } },
+      "lastVerified": "2026-08-15",
+      "suggest": {
+        "when": { "all": ["hasPython", "hasPyrightLanguageServer"] },
+        "reason": "Python and Pyright detected"
+      }
+    },
+    {
+      "id": "plugin/github",
+      "version": "1.0.0",
+      "kind": "plugin",
+      "name": "GitHub",
+      "category": "Anthropic",
+      "description": "Official Claude integration for GitHub issues, pull requests, and actions; authentication is configured separately.",
+      "adapters": ["claude"],
+      "scopes": ["project", "user"],
+      "adapter": { "claude": { "pluginId": "github", "marketplace": { "name": "claude-plugins-official", "repo": "anthropics/claude-plugins-official" } } },
+      "lastVerified": "2026-08-15",
+      "suggest": { "when": { "all": ["isGitHubRepo"] }, "reason": "GitHub remote detected" }
+    },
+    {
+      "id": "plugin/codex",
+      "version": "1.0.6",
+      "kind": "plugin",
+      "name": "Codex for Claude",
+      "category": "OpenAI",
+      "description": "Claude plugin that exposes an existing Codex CLI for delegation and code review.",
+      "adapters": ["claude"],
+      "scopes": ["project", "user"],
+      "requires": { "commands": ["codex"] },
+      "adapter": { "claude": { "pluginId": "codex", "marketplace": { "name": "openai-codex", "repo": "openai/codex-plugin-cc" } } },
+      "lastVerified": "2026-08-15"
     }
   ]
 }
