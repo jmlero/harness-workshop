@@ -5,6 +5,18 @@
   - Distill only the workflows that fit the repository vision.
   - Add catalog metadata, attribution, lifecycle tests, and usage documentation.
 
+- [ ] Add an agent memory block.
+  - Add `catalog/blocks/memory.md` describing a project memory file (for example
+    `agents/memory.md`) that agents append to themselves when they learn
+    something durable and genuinely relevant: a non-obvious constraint, a
+    decision and its reason, or a correction that would otherwise be relearned.
+  - Define the entry format and the bar for writing one, so the file stays small
+    and does not duplicate the code, git history, or `AGENTS.md`.
+  - Add catalog metadata (stable ID, version, scope, source, context cost) and
+    link the block from `AGENTS.md` alongside the other instruction modules.
+  - Add lifecycle tests for install, drift detection, and preserving existing
+    user entries, plus README coverage for the new block.
+
 - [x] Add simple TODO instructions.
   - Added a small, portable workflow in `agents/todo-workflow.md` for creating,
     ordering, updating, and completing repository TODOs.
