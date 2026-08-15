@@ -18,6 +18,11 @@ planning, installation, state, and drift detection.
 - Preserve Apache-2.0 metadata and upstream attribution.
 - Update `README.md` for user-visible behavior or commands.
 
+## Agent instructions
+
+- [Read and follow: instruction modules](agents/instruction-modules.md)
+- [Read and follow: TODO workflow](agents/todo-workflow.md)
+
 ## Validation
 
 Run `npm test` for focused work and `npm run check` before handoff. Add regression
