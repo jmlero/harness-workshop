@@ -9,7 +9,9 @@ import {
   isPortable,
   listComponents,
   lockedRemoteContent,
+  lockedRemotePackage,
   remoteContent,
+  resolveRemotePackage,
 } from "../src/catalog.mjs";
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -76,26 +78,59 @@ test("portable components are vendor-neutral and adapters expose only compatible
   assert.equal(availableWithAdapters(components.find(({ id }) => id === "plugin/github"), []), false);
 });
 
-test("remote skills are normalized before checksumming and installation", async (context) => {
+test("remote skill directories are pinned, normalized, checksummed, and complete", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });
   const revision = "0123456789abcdef0123456789abcdef01234567";
+  const treeSha = "89abcdef0123456789abcdef0123456789abcdef";
   const requested = [];
   globalThis.fetch = async (url) => {
-    requested.push(url);
-    if (url.startsWith("https://api.github.com/")) {
-      return { ok: true, json: async () => ({ sha: revision }) };
+    const value = String(url);
+    requested.push(value);
+    if (value.includes("/commits/")) {
+      return { ok: true, json: async () => ({ sha: revision, commit: { tree: { sha: treeSha } } }) };
     }
-    return { ok: true, text: async () => "---\r\nname: remote\r\n---\r\n" };
+    if (value.includes("/git/trees/")) {
+      return {
+        ok: true,
+        json: async () => ({
+          truncated: false,
+          tree: [
+            { path: "fastapi/.agents/skills/fastapi/SKILL.md", type: "blob", mode: "100644", size: 80 },
+            { path: "fastapi/.agents/skills/fastapi/references/dependencies.md", type: "blob", mode: "100644", size: 20 },
+            { path: "LICENSE", type: "blob", mode: "100644", size: 10 },
+          ],
+        }),
+      };
+    }
+    if (value.endsWith("/SKILL.md")) {
+      return { ok: true, text: async () => "---\r\nname: fastapi\r\ndescription: Remote skill.\r\n---\r\n\r\n# FastAPI\r\n" };
+    }
+    if (value.endsWith("/references/dependencies.md")) {
+      return { ok: true, text: async () => "# Dependencies\r\n" };
+    }
+    if (value.endsWith("/LICENSE")) return { ok: true, text: async () => "MIT License\r\n" };
+    return { ok: false, status: 404 };
   };
   const component = listComponents().find(({ id }) => id === "skill/fastapi");
-  assert.equal(await remoteContent(component), "---\nname: remote\n---\n");
-  assert.match(requested[1], new RegExp(revision));
+  const resolved = await resolveRemotePackage(component);
+  assert.deepEqual(resolved.files.map(({ path: file }) => file), [
+    "LICENSE",
+    "references/dependencies.md",
+    "SKILL.md",
+  ]);
+  assert.match(resolved.files.find(({ path: file }) => file === "SKILL.md").content, /Project compatibility/);
+  assert.equal(resolved.files.find(({ path: file }) => file === "references/dependencies.md").content, "# Dependencies\n");
+  assert.equal(resolved.source.revision, revision);
+  assert.equal(resolved.source.resolvedFiles.length, 3);
+  assert.ok(resolved.source.resolvedFiles.every((file) => /^sha256-/.test(file.integrity)));
+  assert.match(requested.find((url) => url.includes("/git/trees/")), new RegExp(treeSha));
 
   requested.length = 0;
-  const pinned = `https://raw.githubusercontent.com/fastapi/fastapi/${revision}/fastapi/.agents/skills/fastapi/SKILL.md`;
-  assert.equal(await lockedRemoteContent(component.id, { resolvedUrl: pinned }), "---\nname: remote\n---\n");
-  assert.deepEqual(requested, [pinned]);
+  const locked = await lockedRemotePackage(component, resolved.source);
+  assert.deepEqual(locked.files, resolved.files);
+  assert.ok(requested.every((url) => url.startsWith("https://raw.githubusercontent.com/")));
+  assert.equal(await lockedRemoteContent(component, resolved.source), await remoteContent(component));
 });
 
 test("Claude marketplace adapters package canonical skills inside the cached plugin root", () => {

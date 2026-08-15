@@ -3,10 +3,10 @@ import { ClaudeSettingsEditor, hookCommand } from "./adapters/claude.mjs";
 import {
   bundledContent,
   getComponent,
-  lockedRemoteContent,
+  lockedRemotePackage,
   metadataIntegrity,
   requireComponent,
-  resolveRemoteContent,
+  resolveRemotePackage,
 } from "./catalog.mjs";
 import { integrity, normalizeText } from "./integrity.mjs";
 import {
@@ -84,11 +84,10 @@ async function installComponent(context) {
     entry.integrity = integrity(content);
     installBlock(context, entry, content);
   } else if (component.kind === "skill") {
-    const resolved = await resolveSkillContent(context);
-    const content = resolved.content;
+    const resolved = await resolveSkillPackage(context);
     if (resolved.source) entry.source = resolved.source;
-    entry.integrity = integrity(content);
-    installSkill(context, entry, content);
+    entry.integrity = skillPackageIntegrity(resolved.files);
+    installSkill(context, entry, resolved.files);
   } else if (component.kind === "hook") {
     const content = bundledContent(component);
     entry.integrity = integrity(content);
@@ -134,38 +133,47 @@ function installBlock({ component, previous, planner, cwd, force }, entry, conte
   }));
 }
 
-function installSkill({ component, selection, adapters, previous, planner, cwd, home }, entry, content) {
+function installSkill({ component, selection, adapters, previous, planner, cwd, home }, entry, files) {
   const name = component.id.slice("skill/".length);
   const root = selection.scope === "user" ? home : cwd;
   const canonicalDirectory = path.join(root, ".agents", "skills", name);
-  const canonical = path.join(canonicalDirectory, "SKILL.md");
-  const previousFile = findFile(previous, canonical, planner);
-  const current = planner.state(canonical);
-  planner.write(canonical, content, {
-    owned: Boolean(previousFile) || (current.kind === "file" && current.content === content),
-    expectedIntegrity: previousFile?.integrity,
-  });
-  entry.files.push(fileRecord(canonical, "file", planner, {
-    integrity: entry.integrity,
-    created: previousFile?.created ?? current.kind === "missing",
-  }));
+  for (const skillFile of files) {
+    const canonical = skillPath(canonicalDirectory, skillFile.path, component.id);
+    const previousFile = findFile(previous, canonical, planner);
+    const current = planner.state(canonical);
+    const fileIntegrity = integrity(skillFile.content);
+    planner.write(canonical, skillFile.content, {
+      mode: skillFile.mode ?? 0o644,
+      owned: Boolean(previousFile) || (current.kind === "file" && current.content === skillFile.content),
+      expectedIntegrity: previousFile?.integrity,
+    });
+    entry.files.push(fileRecord(canonical, "file", planner, {
+      integrity: fileIntegrity,
+      created: previousFile?.created ?? current.kind === "missing",
+      ...(skillFile.mode === 0o755 ? { executable: true } : {}),
+    }));
+  }
 
   if (!adapters.includes("claude")) return;
   const claudeSkill = path.join(root, ".claude", "skills", name);
   const previousBridge = findFile(previous, claudeSkill, planner);
   if (process.platform === "win32") {
-    const bridgeFile = path.join(claudeSkill, "SKILL.md");
-    const previousCopy = findFile(previous, bridgeFile, planner);
-    const copyState = planner.state(bridgeFile);
-    planner.write(bridgeFile, content, {
-      owned: Boolean(previousCopy) || (copyState.kind === "file" && copyState.content === content),
-      expectedIntegrity: previousCopy?.integrity,
-    });
-    entry.files.push(fileRecord(bridgeFile, "file", planner, {
-      integrity: entry.integrity,
-      created: previousCopy?.created ?? copyState.kind === "missing",
-      fallbackCopy: true,
-    }));
+    for (const skillFile of files) {
+      const bridgeFile = skillPath(claudeSkill, skillFile.path, component.id);
+      const previousCopy = findFile(previous, bridgeFile, planner);
+      const copyState = planner.state(bridgeFile);
+      planner.write(bridgeFile, skillFile.content, {
+        mode: skillFile.mode ?? 0o644,
+        owned: Boolean(previousCopy) || (copyState.kind === "file" && copyState.content === skillFile.content),
+        expectedIntegrity: previousCopy?.integrity,
+      });
+      entry.files.push(fileRecord(bridgeFile, "file", planner, {
+        integrity: integrity(skillFile.content),
+        created: previousCopy?.created ?? copyState.kind === "missing",
+        fallbackCopy: true,
+        ...(skillFile.mode === 0o755 ? { executable: true } : {}),
+      }));
+    }
   } else {
     const target = path.relative(path.dirname(claudeSkill), canonicalDirectory);
     const bridgeState = planner.state(claudeSkill);
@@ -209,27 +217,27 @@ function installPlugin({ component, selection, claude }, entry) {
   entry.adapter = component.adapter;
 }
 
-async function resolveSkillContent({ component, previous, planner, cwd, home, force, refreshRemote, selection }) {
-  if (component.content.kind === "bundled") return { content: bundledContent(component) };
+async function resolveSkillPackage({ component, previous, planner, cwd, home, force, refreshRemote, selection }) {
+  if (component.content.kind === "bundled") {
+    return { files: [{ path: "SKILL.md", content: bundledContent(component), mode: 0o644 }] };
+  }
 
   const name = component.id.slice("skill/".length);
   const root = selection.scope === "user" ? home : cwd;
-  const canonical = path.join(root, ".agents", "skills", name, "SKILL.md");
-  const current = planner.state(canonical);
-  if (previous && current.kind === "file" && integrity(current.content) !== previous.integrity && !force) {
-    throw new ConflictError(`Managed file has local changes: ${planner.label(canonical)}`);
-  }
-  if (!refreshRemote && previous && current.kind === "file") {
-    return { content: normalizeText(current.content), source: previous.source };
-  }
+  const canonicalDirectory = path.join(root, ".agents", "skills", name);
   if (!refreshRemote && previous) {
-    const content = await lockedRemoteContent(component.id, previous.source);
-    if (integrity(content) !== previous.integrity) {
+    const local = selection.scope === previous.scope
+      ? localSkillPackage(previous, canonicalDirectory, planner, force)
+      : null;
+    if (local) return { files: local, source: previous.source };
+
+    const resolved = await lockedRemotePackage(component, previous.source);
+    if (!matchesPreviousSkillIntegrity(resolved.files, previous.integrity)) {
       throw new ConflictError(`Pinned remote content failed its checksum: ${component.id}`);
     }
-    return { content, source: previous.source };
+    return resolved;
   }
-  return resolveRemoteContent(component);
+  return resolveRemotePackage(component);
 }
 
 function uninstallComponent({ id, previous, component, planner, claude, cwd, home, force }) {
@@ -398,4 +406,61 @@ function fileRecord(file, kind, planner, properties = {}) {
 function findFile(previous, file, planner) {
   const encoded = portablePath(file, planner);
   return previous?.files?.find((candidate) => candidate.path === encoded);
+}
+
+function localSkillPackage(previous, canonicalDirectory, planner, force) {
+  const records = (previous.files ?? []).filter((record) => {
+    if (record.kind !== "file" || record.fallbackCopy) return false;
+    const absolute = resolvePortablePath(record.path, planner);
+    const relative = path.relative(canonicalDirectory, absolute);
+    return relative && !relative.startsWith("..") && !path.isAbsolute(relative);
+  });
+  if (!records.length) return null;
+
+  const files = [];
+  for (const record of records) {
+    const absolute = resolvePortablePath(record.path, planner);
+    const current = planner.state(absolute);
+    if (current.kind === "missing") return null;
+    if (current.kind !== "file") {
+      if (!force) throw new ConflictError(`Managed file changed type: ${planner.label(absolute)}`);
+      return null;
+    }
+    if (record.integrity && integrity(current.content) !== record.integrity && !force) {
+      throw new ConflictError(`Managed file has local changes: ${planner.label(absolute)}`);
+    }
+    files.push({
+      path: path.relative(canonicalDirectory, absolute).split(path.sep).join("/"),
+      content: normalizeText(current.content),
+      mode: current.mode & 0o777,
+    });
+  }
+  return files.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function skillPackageIntegrity(files) {
+  const records = files
+    .map((file) => ({ path: file.path, integrity: integrity(file.content), mode: file.mode ?? 0o644 }))
+    .sort((left, right) => left.path.localeCompare(right.path));
+  return integrity(JSON.stringify(records));
+}
+
+function matchesPreviousSkillIntegrity(files, expected) {
+  if (skillPackageIntegrity(files) === expected) return true;
+  return files.length === 1 && files[0].path === "SKILL.md" && integrity(files[0].content) === expected;
+}
+
+function skillPath(root, relative, componentId) {
+  if (typeof relative !== "string" || !relative || relative.includes("\\")) {
+    throw new Error(`Invalid skill package path: ${componentId}`);
+  }
+  const segments = relative.split("/");
+  if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
+    throw new Error(`Invalid skill package path: ${componentId}/${relative}`);
+  }
+  const absolute = path.resolve(root, ...segments);
+  if (!absolute.startsWith(`${path.resolve(root)}${path.sep}`)) {
+    throw new Error(`Skill package escapes its directory: ${componentId}/${relative}`);
+  }
+  return absolute;
 }

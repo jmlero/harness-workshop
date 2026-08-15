@@ -161,20 +161,23 @@
     },
     {
       "id": "skill/terraform-skill",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "kind": "skill",
       "name": "Terraform skill",
       "category": "Community",
-      "description": "Portable Terraform and OpenTofu module, testing, CI/CD, and security guidance.",
+      "description": "Version-aware Terraform and OpenTofu guidance with complete upstream references.",
       "scopes": ["project", "user"],
       "content": {
         "kind": "remote",
         "url": "https://raw.githubusercontent.com/antonbabenko/terraform-skill/master/skills/terraform-skill/SKILL.md",
         "upstream": "antonbabenko/terraform-skill",
+        "root": "skills/terraform-skill",
+        "overlay": "overlays/terraform-skill.md",
+        "licensePath": "LICENSE",
         "mutable": true
       },
       "license": "Apache-2.0",
-      "context": { "loading": "on-demand" },
+      "context": { "loading": "on-demand", "estimatedTokens": 5200 },
       "suggest": { "when": ["hasTerraform"], "reason": "Terraform detected" }
     },
     {
@@ -243,19 +246,23 @@
     },
     {
       "id": "skill/fastapi",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "kind": "skill",
       "name": "FastAPI",
       "category": "Framework skill",
-      "description": "Official FastAPI guidance for typing, dependency injection, async behavior, and streaming.",
+      "description": "Official, version-aware FastAPI guidance with complete upstream references.",
       "scopes": ["project", "user"],
       "content": {
         "kind": "remote",
         "url": "https://raw.githubusercontent.com/fastapi/fastapi/master/fastapi/.agents/skills/fastapi/SKILL.md",
         "upstream": "fastapi/fastapi",
+        "root": "fastapi/.agents/skills/fastapi",
+        "overlay": "overlays/fastapi.md",
+        "licensePath": "LICENSE",
         "mutable": true
       },
-      "context": { "loading": "on-demand" },
+      "license": "MIT",
+      "context": { "loading": "on-demand", "estimatedTokens": 2700 },
       "suggest": { "when": ["hasFastAPI"], "reason": "FastAPI detected" }
     }
   ]

@@ -40,7 +40,8 @@ The CLI records desired components and optional adapters in
 `.harness-workshop/manifest.json`, with pins and checksums in
 `.harness-workshop/lock.json`. It manages only marked `AGENTS.md` blocks,
 refuses ambiguous or locally modified managed content, and never executes
-external installation commands.
+external installation commands. Remote skills are pinned to an immutable
+revision and installed with their declared references and upstream license.
 
 The Claude adapter links canonical skills from `.claude/skills` and bridges
 `CLAUDE.md` to `AGENTS.md`. The opt-in `slim-cli` hook requires `jq`.

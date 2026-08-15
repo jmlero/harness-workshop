@@ -27,3 +27,11 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Remote skills
+
+`skill/terraform-skill` installs pinned content from
+[antonbabenko/terraform-skill](https://github.com/antonbabenko/terraform-skill)
+under Apache-2.0. `skill/fastapi` installs pinned content from
+[fastapi/fastapi](https://github.com/fastapi/fastapi) under MIT. Their upstream
+license files are installed with each skill package.

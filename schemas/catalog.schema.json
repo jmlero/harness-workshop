@@ -17,13 +17,56 @@
           "kind": { "enum": ["block", "skill", "hook", "plugin", "tool"] },
           "name": { "type": "string" },
           "description": { "type": "string" },
+          "license": { "type": "string" },
           "adapters": { "type": "array", "items": { "enum": ["claude"] }, "minItems": 1, "uniqueItems": true },
-          "scopes": { "type": "array", "items": { "enum": ["project", "user"] }, "minItems": 1, "uniqueItems": true }
+          "scopes": { "type": "array", "items": { "enum": ["project", "user"] }, "minItems": 1, "uniqueItems": true },
+          "context": {
+            "type": "object",
+            "properties": {
+              "loading": { "enum": ["always", "on-demand", "none"] },
+              "estimatedTokens": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "content": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["kind", "path"],
+                "properties": {
+                  "kind": { "const": "bundled" },
+                  "path": { "type": "string" }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "url", "upstream"],
+                "properties": {
+                  "kind": { "const": "remote" },
+                  "url": { "type": "string", "format": "uri" },
+                  "upstream": { "type": "string" },
+                  "mutable": { "type": "boolean" },
+                  "root": { "type": "string" },
+                  "overlay": { "type": "string" },
+                  "licensePath": { "type": "string" },
+                  "licenseTarget": { "type": "string" }
+                }
+              }
+            ]
+          }
         },
         "allOf": [
           {
             "if": { "properties": { "kind": { "enum": ["hook", "plugin"] } }, "required": ["kind"] },
             "then": { "required": ["adapters"] }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "skill" } }, "required": ["kind"] },
+            "then": {
+              "required": ["content", "context"],
+              "properties": {
+                "context": { "required": ["loading", "estimatedTokens"] }
+              }
+            }
           }
         ]
       }
