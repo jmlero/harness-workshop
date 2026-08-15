@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   availableWithAdapters,
   bundledContent,
+  bundledPackage,
   isPortable,
   listComponents,
   lockedRemoteContent,
@@ -19,7 +20,7 @@ const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".
 test("catalog contains every ported component with stable metadata", () => {
   const components = listComponents();
   const ids = components.map(({ id }) => id);
-  assert.equal(components.length, 20);
+  assert.equal(components.length, 21);
   assert.equal(new Set(ids).size, ids.length);
   for (const id of [
     "block/tdd",
@@ -28,6 +29,8 @@ test("catalog contains every ported component with stable metadata", () => {
     "skill/audit-docs",
     "skill/review-pr",
     "skill/ponytail",
+    "command/verify-work",
+    "command/commit-work",
     "hook/slim-cli",
     "plugin/frontend-design",
     "plugin/typescript-lsp",
@@ -39,7 +42,6 @@ test("catalog contains every ported component with stable metadata", () => {
     "plugin/codex",
     "tool/code-review-graph",
     "tool/codegraph",
-    "tool/context7",
     "tool/backlog",
     "skill/fastapi",
   ]) assert.ok(ids.includes(id), id);
@@ -48,8 +50,20 @@ test("catalog contains every ported component with stable metadata", () => {
     assert.match(component.version, /^\d+\.\d+\.\d+$/);
     assert.ok(component.scopes.length);
     assert.equal(Object.hasOwn(component, "targets"), false);
-    if (component.adapters) assert.deepEqual(component.adapters, ["claude"]);
+    if (component.id === "hook/slim-cli") assert.deepEqual(component.adapters, ["claude", "grok"]);
+    else if (component.adapters) assert.deepEqual(component.adapters, ["claude"]);
     if (component.content?.kind === "bundled") assert.ok(bundledContent(component).length > 20);
+  }
+});
+
+test("workflow commands are complete, explicitly invoked Agent Skill packages", () => {
+  for (const id of ["command/verify-work", "command/commit-work"]) {
+    const component = listComponents().find((candidate) => candidate.id === id);
+    assert.equal(component.context.loading, "explicit");
+    const files = bundledPackage(component);
+    assert.deepEqual(files.map(({ path: file }) => file), ["agents/openai.yaml", "SKILL.md"]);
+    assert.match(files.find(({ path: file }) => file === "SKILL.md").content, /^---\nname: [a-z-]+\ndescription: .+\n---/);
+    assert.match(files.find(({ path: file }) => file === "agents/openai.yaml").content, /allow_implicit_invocation: false/);
   }
 });
 
@@ -69,12 +83,15 @@ test("portable components are vendor-neutral and adapters expose only compatible
   const components = listComponents();
   const portable = components.filter(isPortable);
   const claude = components.filter((component) => availableWithAdapters(component, ["claude"]));
+  const grok = components.filter((component) => availableWithAdapters(component, ["grok"]));
 
   assert.ok(portable.some(({ id }) => id === "block/tdd"));
   assert.ok(portable.some(({ id }) => id === "skill/audit-code"));
   assert.ok(portable.every(({ kind }) => kind !== "plugin" && kind !== "hook"));
   assert.ok(portable.every((component) => component.adapters === undefined));
   assert.equal(claude.length, components.length);
+  assert.equal(grok.length, portable.length + 1);
+  assert.ok(grok.some(({ id }) => id === "hook/slim-cli"));
   assert.equal(availableWithAdapters(components.find(({ id }) => id === "plugin/github"), []), false);
 });
 

@@ -86,16 +86,48 @@
       "context": { "loading": "on-demand", "estimatedTokens": 330 }
     },
     {
+      "id": "command/verify-work",
+      "version": "1.0.0",
+      "kind": "command",
+      "name": "Verify work",
+      "category": "Workflow command",
+      "description": "Run the repository's real checks and report concrete evidence without changing the implementation.",
+      "scopes": ["project", "user"],
+      "content": {
+        "kind": "bundled",
+        "path": "commands/verify-work/SKILL.md",
+        "root": "commands/verify-work"
+      },
+      "context": { "loading": "explicit", "estimatedTokens": 190 },
+      "suggest": { "when": "always", "reason": "reusable evidence-based verification" }
+    },
+    {
+      "id": "command/commit-work",
+      "version": "1.0.0",
+      "kind": "command",
+      "name": "Commit work",
+      "category": "Workflow command",
+      "description": "Review, validate, and create one focused Git commit while preserving unrelated work.",
+      "scopes": ["project", "user"],
+      "content": {
+        "kind": "bundled",
+        "path": "commands/commit-work/SKILL.md",
+        "root": "commands/commit-work"
+      },
+      "context": { "loading": "explicit", "estimatedTokens": 210 },
+      "suggest": { "when": ["isGitRepo"], "reason": "Git repository detected" }
+    },
+    {
       "id": "hook/slim-cli",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "kind": "hook",
       "name": "Slim CLI output",
       "category": "Operations",
-      "description": "Claude-only PreToolUse hook that adds safe quiet flags without truncating diagnostics or changing command semantics.",
-      "adapters": ["claude"],
+      "description": "Claude and Grok PreToolUse hook that adds safe quiet flags without truncating diagnostics or changing command semantics.",
+      "adapters": ["claude", "grok"],
       "scopes": ["project", "user"],
       "recommendedScope": "user",
-      "content": { "kind": "bundled", "path": "../adapters/claude/hooks/slim-cli/slim-cli.sh" },
+      "content": { "kind": "bundled", "path": "hooks/slim-cli/slim-cli.sh" },
       "context": { "loading": "none", "estimatedTokens": 0 }
     },
     {
@@ -222,17 +254,6 @@
       "description": "Node-based code knowledge graph alternative.",
       "scopes": ["user"],
       "manual": { "install": "npx @colbymchenry/codegraph", "postInstall": "codegraph init" }
-    },
-    {
-      "id": "tool/context7",
-      "version": "1.0.0",
-      "kind": "tool",
-      "name": "Context7",
-      "category": "External tool",
-      "description": "Fetch current version-specific library documentation.",
-      "scopes": ["user"],
-      "manual": { "install": "npx ctx7@latest setup" },
-      "suggest": { "when": "always", "reason": "reduces stale API guidance" }
     },
     {
       "id": "tool/backlog",

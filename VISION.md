@@ -2,12 +2,13 @@
 
 ## The idea
 
-`harness-workshop` is a personal, agent-agnostic toolkit for starting and shaping
+`harness-workshop` is an agent-agnostic toolkit for starting and shaping
 software projects. From a new or existing repository, one CLI should be able to
 install a curated set of:
 
 - instruction blocks in `AGENTS.md`;
 - on-demand skills;
+- explicit commands for repeatable workflows;
 - specialized agent definitions;
 - automation hooks; and
 - reusable profiles that combine them.
@@ -53,17 +54,24 @@ Claude Code, Codex, and other supported agents.
 Portable content does not declare vendor targets. It installs canonically and
 is available to every agent that reads the standard files. Adapters are
 optional, explicit edges used only when an agent needs a bridge, alternate
-layout, or native integration. Codex consumes `AGENTS.md` and `.agents/skills`
-directly; the Claude adapter exposes those files through Claude conventions.
+layout, or native integration. Codex and Grok Build consume `AGENTS.md` and
+`.agents/skills` directly; the Claude adapter exposes those files through
+Claude conventions.
 
 Portability does not mean pretending every agent has the same features:
 
 - instruction blocks can usually be shared directly;
 - skills can share core Markdown while adapters supply agent-specific metadata
   and install paths;
+- commands use the portable Agent Skills format with explicit invocation;
+  adapters may expose native slash-command syntax without copying the workflow;
 - agent definitions need a portable role and task contract plus optional native
   representations;
 - hooks are capability-specific and must declare which agents they support.
+
+Shared filenames do not imply shared configuration. Grok does not import Codex
+configuration, plugins, MCP servers, hooks, or subagent definitions from
+`.codex`; each non-portable surface needs a tested adapter or an explicit gap.
 
 When a feature has no native equivalent, `harness-workshop` should explain the
 limitation and install a safe fallback where possible. It must not silently
@@ -131,6 +139,7 @@ The CLI should make common workflows obvious:
 harness-workshop init                 # inspect the project and propose a profile
 harness-workshop add block/tdd        # manage a block in AGENTS.md
 harness-workshop add skill/review-pr  # install once in the canonical skill path
+harness-workshop add command/verify-work # add an explicitly invoked workflow
 harness-workshop add agent/reviewer   # add a reusable specialist where supported
 harness-workshop add hook/slim-cli    # install an explicit adapter-specific hook
 harness-workshop plan                 # preview all changes

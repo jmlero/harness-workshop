@@ -4,10 +4,10 @@
 set -euo pipefail
 
 input=$(cat)
-tool_name=$(printf '%s' "$input" | jq -r '.tool_name // empty')
-[[ "$tool_name" == "Bash" ]] || exit 0
+tool_name=$(printf '%s' "$input" | jq -r '.tool_name // .toolName // empty')
+[[ "$tool_name" == "Bash" || "$tool_name" == "run_terminal_command" ]] || exit 0
 
-command=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
+command=$(printf '%s' "$input" | jq -r '.tool_input.command // .toolInput.command // empty')
 [[ -n "$command" ]] || exit 0
 
 # Compound shell syntax is intentionally left unchanged. Appending a flag
@@ -37,10 +37,19 @@ fi
 
 [[ -n "$rewritten" ]] || exit 0
 
-jq -n --arg command "$rewritten" '{
-  hookSpecificOutput: {
-    hookEventName: "PreToolUse",
-    permissionDecision: "allow",
-    updatedInput: { command: $command }
-  }
-}'
+if printf '%s' "$input" | jq -e 'has("toolName")' >/dev/null; then
+  jq -n --arg command "$rewritten" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      updatedInput: { command: $command }
+    }
+  }'
+else
+  jq -n --arg command "$rewritten" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "allow",
+      updatedInput: { command: $command }
+    }
+  }'
+fi

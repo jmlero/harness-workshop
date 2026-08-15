@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/adapters/claude/hooks/slim-cli/slim-cli.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/catalog/hooks/slim-cli/slim-cli.sh"
           }
         ]
       }

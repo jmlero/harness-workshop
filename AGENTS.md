@@ -14,6 +14,8 @@ planning, installation, state, and drift detection.
 - Define portable instructions once; keep adapters thin and capability-specific.
 - Add catalog components declaratively with stable IDs, versions, scopes,
   sources, and context costs. Declare adapters only for vendor-specific edges.
+- Keep normal CLI output compact and sectioned; reserve exact file bodies for
+  `plan` and `--dry-run`.
 - Never overwrite unowned content or hide unsupported behavior.
 - Preserve Apache-2.0 metadata and upstream attribution.
 - Update `README.md` for user-visible behavior or commands.

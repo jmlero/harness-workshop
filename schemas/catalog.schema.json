@@ -12,18 +12,18 @@
         "type": "object",
         "required": ["id", "version", "kind", "name", "description", "scopes"],
         "properties": {
-          "id": { "type": "string", "pattern": "^(block|skill|hook|plugin|tool)/[a-z0-9][a-z0-9-]*$" },
+          "id": { "type": "string", "pattern": "^(block|skill|command|hook|plugin|tool)/[a-z0-9][a-z0-9-]*$" },
           "version": { "type": "string" },
-          "kind": { "enum": ["block", "skill", "hook", "plugin", "tool"] },
+          "kind": { "enum": ["block", "skill", "command", "hook", "plugin", "tool"] },
           "name": { "type": "string" },
           "description": { "type": "string" },
           "license": { "type": "string" },
-          "adapters": { "type": "array", "items": { "enum": ["claude"] }, "minItems": 1, "uniqueItems": true },
+          "adapters": { "type": "array", "items": { "enum": ["claude", "grok"] }, "minItems": 1, "uniqueItems": true },
           "scopes": { "type": "array", "items": { "enum": ["project", "user"] }, "minItems": 1, "uniqueItems": true },
           "context": {
             "type": "object",
             "properties": {
-              "loading": { "enum": ["always", "on-demand", "none"] },
+              "loading": { "enum": ["always", "on-demand", "explicit", "none"] },
               "estimatedTokens": { "type": "integer", "minimum": 0 }
             }
           },
@@ -34,7 +34,8 @@
                 "required": ["kind", "path"],
                 "properties": {
                   "kind": { "const": "bundled" },
-                  "path": { "type": "string" }
+                  "path": { "type": "string" },
+                  "root": { "type": "string" }
                 }
               },
               {
@@ -60,7 +61,7 @@
             "then": { "required": ["adapters"] }
           },
           {
-            "if": { "properties": { "kind": { "const": "skill" } }, "required": ["kind"] },
+            "if": { "properties": { "kind": { "enum": ["skill", "command"] } }, "required": ["kind"] },
             "then": {
               "required": ["content", "context"],
               "properties": {

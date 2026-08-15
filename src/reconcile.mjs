@@ -1,6 +1,8 @@
 import path from "node:path";
 import { ClaudeSettingsEditor, hookCommand } from "./adapters/claude.mjs";
+import { grokCommandBridge, grokHook, grokHookDocument } from "./adapters/grok.mjs";
 import {
+  bundledPackage,
   bundledContent,
   getComponent,
   lockedRemotePackage,
@@ -83,7 +85,7 @@ async function installComponent(context) {
     const content = bundledContent(component);
     entry.integrity = integrity(content);
     installBlock(context, entry, content);
-  } else if (component.kind === "skill") {
+  } else if (new Set(["skill", "command"]).has(component.kind)) {
     const resolved = await resolveSkillPackage(context);
     if (resolved.source) entry.source = resolved.source;
     entry.integrity = skillPackageIntegrity(resolved.files);
@@ -134,7 +136,7 @@ function installBlock({ component, previous, planner, cwd, force }, entry, conte
 }
 
 function installSkill({ component, selection, adapters, previous, planner, cwd, home }, entry, files) {
-  const name = component.id.slice("skill/".length);
+  const name = componentName(component);
   const root = selection.scope === "user" ? home : cwd;
   const canonicalDirectory = path.join(root, ".agents", "skills", name);
   for (const skillFile of files) {
@@ -154,61 +156,107 @@ function installSkill({ component, selection, adapters, previous, planner, cwd, 
     }));
   }
 
-  if (!adapters.includes("claude")) return;
-  const claudeSkill = path.join(root, ".claude", "skills", name);
-  const previousBridge = findFile(previous, claudeSkill, planner);
-  if (process.platform === "win32") {
-    for (const skillFile of files) {
-      const bridgeFile = skillPath(claudeSkill, skillFile.path, component.id);
-      const previousCopy = findFile(previous, bridgeFile, planner);
-      const copyState = planner.state(bridgeFile);
-      planner.write(bridgeFile, skillFile.content, {
-        mode: skillFile.mode ?? 0o644,
-        owned: Boolean(previousCopy) || (copyState.kind === "file" && copyState.content === skillFile.content),
-        expectedIntegrity: previousCopy?.integrity,
+  if (adapters.includes("claude")) {
+    const claudeSkill = path.join(root, ".claude", "skills", name);
+    const previousBridge = findFile(previous, claudeSkill, planner);
+    if (process.platform === "win32") {
+      for (const skillFile of files) {
+        const bridgeFile = skillPath(claudeSkill, skillFile.path, component.id);
+        const previousCopy = findFile(previous, bridgeFile, planner);
+        const copyState = planner.state(bridgeFile);
+        planner.write(bridgeFile, skillFile.content, {
+          mode: skillFile.mode ?? 0o644,
+          owned: Boolean(previousCopy) || (copyState.kind === "file" && copyState.content === skillFile.content),
+          expectedIntegrity: previousCopy?.integrity,
+        });
+        entry.files.push(fileRecord(bridgeFile, "file", planner, {
+          integrity: integrity(skillFile.content),
+          created: previousCopy?.created ?? copyState.kind === "missing",
+          fallbackCopy: true,
+          ...(skillFile.mode === 0o755 ? { executable: true } : {}),
+        }));
+      }
+    } else {
+      const target = path.relative(path.dirname(claudeSkill), canonicalDirectory);
+      const bridgeState = planner.state(claudeSkill);
+      planner.symlink(claudeSkill, target, {
+        linkType: "dir",
+        owned: Boolean(previousBridge) || (bridgeState.kind === "symlink" && bridgeState.target === target),
+        expectedTarget: previousBridge?.target,
       });
-      entry.files.push(fileRecord(bridgeFile, "file", planner, {
-        integrity: integrity(skillFile.content),
-        created: previousCopy?.created ?? copyState.kind === "missing",
-        fallbackCopy: true,
-        ...(skillFile.mode === 0o755 ? { executable: true } : {}),
+      entry.files.push(fileRecord(claudeSkill, "symlink", planner, {
+        target,
+        created: previousBridge?.created ?? bridgeState.kind === "missing",
       }));
     }
-  } else {
-    const target = path.relative(path.dirname(claudeSkill), canonicalDirectory);
-    const bridgeState = planner.state(claudeSkill);
-    planner.symlink(claudeSkill, target, {
-      linkType: "dir",
-      owned: Boolean(previousBridge) || (bridgeState.kind === "symlink" && bridgeState.target === target),
-      expectedTarget: previousBridge?.target,
+  }
+
+  if (component.kind === "command" && adapters.includes("grok")) {
+    const bridge = grokCommandBridge({
+      component,
+      scope: selection.scope,
+      cwd,
+      home,
+      canonical: path.join(canonicalDirectory, "SKILL.md"),
     });
-    entry.files.push(fileRecord(claudeSkill, "symlink", planner, {
-      target,
-      created: previousBridge?.created ?? bridgeState.kind === "missing",
+    const previousBridge = findFile(previous, bridge.file, planner);
+    const current = planner.state(bridge.file);
+    planner.write(bridge.file, bridge.content, {
+      owned: Boolean(previousBridge) || (current.kind === "file" && current.content === bridge.content),
+      expectedIntegrity: previousBridge?.integrity,
+    });
+    entry.files.push(fileRecord(bridge.file, "file", planner, {
+      integrity: integrity(bridge.content),
+      created: previousBridge?.created ?? current.kind === "missing",
+      grokCommandBridge: true,
     }));
   }
 }
 
-function installHook({ component, selection, previous, planner, claude, cwd, home }, entry, content) {
+function installHook({ component, selection, adapters, previous, planner, claude, cwd, home }, entry, content) {
   const root = selection.scope === "user" ? home : cwd;
-  const file = path.join(root, ".claude", "hooks", "harness-workshop", "slim-cli.sh");
+  entry.adapter = {};
+
+  if (previous?.adapter?.claude?.command
+    && (!adapters.includes("claude") || previous.scope !== selection.scope)) {
+    claude.disableHook(previous.scope, previous.adapter.claude.command);
+  }
+
+  if (adapters.includes("claude")) {
+    const file = path.join(root, ".claude", "hooks", "harness-workshop", "slim-cli.sh");
+    installHookFile({ file, content, previous, planner, entry, executable: true });
+    const command = hookCommand(selection.scope, { cwd, home });
+    claude.enableHook(selection.scope, command);
+    entry.adapter.claude = { command };
+  }
+
+  if (adapters.includes("grok")) {
+    const hook = grokHook({ scope: selection.scope, cwd, home });
+    installHookFile({ file: hook.script, content, previous, planner, entry, executable: true });
+    installHookFile({
+      file: hook.config,
+      content: grokHookDocument(),
+      previous,
+      planner,
+      entry,
+    });
+    entry.adapter.grok = { command: hook.command };
+  }
+}
+
+function installHookFile({ file, content, previous, planner, entry, executable = false }) {
   const previousFile = findFile(previous, file, planner);
   const current = planner.state(file);
+  const fileIntegrity = integrity(content);
   planner.write(file, content, {
-    mode: 0o755,
+    mode: executable ? 0o755 : 0o644,
     owned: Boolean(previousFile) || (current.kind === "file" && current.content === content),
     expectedIntegrity: previousFile?.integrity,
   });
-  const command = hookCommand(selection.scope, { cwd, home });
-  if (previous && previous.scope !== selection.scope && previous.adapter?.claude?.command) {
-    claude.disableHook(previous.scope, previous.adapter.claude.command);
-  }
-  claude.enableHook(selection.scope, command);
-  entry.adapter = { claude: { command } };
   entry.files.push(fileRecord(file, "file", planner, {
-    integrity: entry.integrity,
+    integrity: fileIntegrity,
     created: previousFile?.created ?? current.kind === "missing",
-    executable: true,
+    ...(executable ? { executable: true } : {}),
   }));
 }
 
@@ -219,10 +267,10 @@ function installPlugin({ component, selection, claude }, entry) {
 
 async function resolveSkillPackage({ component, previous, planner, cwd, home, force, refreshRemote, selection }) {
   if (component.content.kind === "bundled") {
-    return { files: [{ path: "SKILL.md", content: bundledContent(component), mode: 0o644 }] };
+    return { files: bundledPackage(component) };
   }
 
-  const name = component.id.slice("skill/".length);
+  const name = componentName(component);
   const root = selection.scope === "user" ? home : cwd;
   const canonicalDirectory = path.join(root, ".agents", "skills", name);
   if (!refreshRemote && previous) {
@@ -463,4 +511,8 @@ function skillPath(root, relative, componentId) {
     throw new Error(`Skill package escapes its directory: ${componentId}/${relative}`);
   }
   return absolute;
+}
+
+function componentName(component) {
+  return component.id.slice(component.kind.length + 1);
 }

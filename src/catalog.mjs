@@ -8,6 +8,7 @@ const catalogRoot = path.join(packageRoot, "catalog");
 const catalogPath = path.join(catalogRoot, "catalog.json");
 const remotePackageMaxFiles = 200;
 const remotePackageMaxBytes = 2_000_000;
+const supportedCatalogAdapters = new Set(["claude", "grok"]);
 
 let cachedCatalog;
 
@@ -28,14 +29,15 @@ export function loadCatalog() {
     }
     if (component.adapters && (!Array.isArray(component.adapters)
       || !component.adapters.length
-      || component.adapters.some((adapter) => adapter !== "claude"))) {
+      || component.adapters.some((adapter) => !supportedCatalogAdapters.has(adapter)))) {
       throw new Error(`Invalid adapters for catalog component: ${component.id}`);
     }
     if (new Set(["hook", "plugin"]).has(component.kind) && !component.adapters) {
       throw new Error(`Adapter-specific component must declare adapters: ${component.id}`);
     }
-    if (component.kind === "skill" && !Number.isInteger(component.context?.estimatedTokens)) {
-      throw new Error(`Skill must declare an estimated context cost: ${component.id}`);
+    if (new Set(["skill", "command"]).has(component.kind)
+      && !Number.isInteger(component.context?.estimatedTokens)) {
+      throw new Error(`Skill or command must declare an estimated context cost: ${component.id}`);
     }
     if (component.content?.kind === "remote" && component.content.root) {
       const github = parseGitHubRawUrl(component.content.url);
@@ -85,12 +87,32 @@ export function bundledContent(component) {
   if (component.content?.kind !== "bundled") {
     throw new Error(`${component.id} does not have bundled content`);
   }
-  const sourcePath = path.resolve(catalogRoot, component.content.path);
-  const allowedRoots = [catalogRoot, path.join(packageRoot, "adapters")];
-  if (!allowedRoots.some((root) => sourcePath === root || sourcePath.startsWith(`${root}${path.sep}`))) {
-    throw new Error(`Bundled content escapes the package: ${component.id}`);
-  }
+  const sourcePath = resolveBundledPath(component.content.path, component.id);
   return normalizeText(fs.readFileSync(sourcePath, "utf8"));
+}
+
+export function bundledPackage(component) {
+  const content = bundledContent(component);
+  if (!component.content.root) {
+    return [{ path: "SKILL.md", content, mode: 0o644 }];
+  }
+
+  const sourceRoot = resolveBundledPath(component.content.root, component.id);
+  const skillPath = resolveBundledPath(component.content.path, component.id);
+  if (path.dirname(skillPath) !== sourceRoot || path.basename(skillPath) !== "SKILL.md") {
+    throw new Error(`Bundled package path must point to its root SKILL.md: ${component.id}`);
+  }
+
+  const files = readBundledDirectory(sourceRoot, sourceRoot, component.id)
+    .sort((left, right) => left.path.localeCompare(right.path));
+  if (!files.some((file) => file.path === "SKILL.md")) {
+    throw new Error(`Bundled package has no SKILL.md: ${component.id}`);
+  }
+  const totalBytes = files.reduce((sum, file) => sum + Buffer.byteLength(file.content), 0);
+  if (files.length > remotePackageMaxFiles || totalBytes > remotePackageMaxBytes) {
+    throw new Error(`Bundled package is too large: ${component.id}`);
+  }
+  return files;
 }
 
 export async function remoteContent(component) {
@@ -294,6 +316,35 @@ function readCatalogText(relative, componentId) {
     throw new Error(`Catalog content escapes the package: ${componentId}`);
   }
   return normalizeText(fs.readFileSync(sourcePath, "utf8"));
+}
+
+function resolveBundledPath(relative, componentId) {
+  const sourcePath = path.resolve(catalogRoot, relative);
+  const allowedRoots = [catalogRoot, path.join(packageRoot, "adapters")];
+  if (!allowedRoots.some((root) => sourcePath === root || sourcePath.startsWith(`${root}${path.sep}`))) {
+    throw new Error(`Bundled content escapes the package: ${componentId}`);
+  }
+  return sourcePath;
+}
+
+function readBundledDirectory(root, directory, componentId) {
+  const files = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...readBundledDirectory(root, absolute, componentId));
+    } else if (entry.isFile()) {
+      const relative = path.relative(root, absolute).split(path.sep).join("/");
+      files.push({
+        path: normalizePackagePath(relative, componentId),
+        content: normalizeText(fs.readFileSync(absolute, "utf8")),
+        mode: (fs.statSync(absolute).mode & 0o111) ? 0o755 : 0o644,
+      });
+    } else {
+      throw new Error(`Bundled package contains an unsupported entry: ${componentId}/${entry.name}`);
+    }
+  }
+  return files;
 }
 
 function normalizeRemotePath(value, label) {

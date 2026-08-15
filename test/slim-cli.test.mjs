@@ -5,13 +5,19 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const script = path.join(repository, "adapters", "claude", "hooks", "slim-cli", "slim-cli.sh");
+const script = path.join(repository, "catalog", "hooks", "slim-cli", "slim-cli.sh");
 const hasJq = spawnSync("jq", ["--version"]).status === 0;
 
 test("slim-cli adds safe flags and leaves semantic or truncating commands alone", { skip: !hasJq }, () => {
   const fetch = invoke("git fetch origin");
   assert.equal(fetch.status, 0, fetch.stderr);
   assert.equal(JSON.parse(fetch.stdout).hookSpecificOutput.updatedInput.command, "git fetch origin --quiet");
+  assert.equal(JSON.parse(fetch.stdout).hookSpecificOutput.permissionDecision, "allow");
+
+  const grok = invoke("git fetch origin", "grok");
+  assert.equal(grok.status, 0, grok.stderr);
+  assert.equal(JSON.parse(grok.stdout).hookSpecificOutput.updatedInput.command, "git fetch origin --quiet");
+  assert.equal(JSON.parse(grok.stdout).hookSpecificOutput.permissionDecision, undefined);
 
   for (const command of [
     "git pull",
@@ -30,9 +36,11 @@ test("slim-cli adds safe flags and leaves semantic or truncating commands alone"
   assert.equal(controlled.stdout, "");
 });
 
-function invoke(command) {
+function invoke(command, host = "claude") {
   return spawnSync("bash", [script], {
     encoding: "utf8",
-    input: JSON.stringify({ tool_name: "Bash", tool_input: { command } }),
+    input: JSON.stringify(host === "grok"
+      ? { toolName: "run_terminal_command", toolInput: { command } }
+      : { tool_name: "Bash", tool_input: { command } }),
   });
 }
