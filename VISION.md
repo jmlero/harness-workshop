@@ -1,37 +1,45 @@
 # `harness-workshop` vision
 
-## The idea
+## The promise
 
-`harness-workshop` adds the minimum durable agent guidance that a repository
-actually needs. Its first-class product is a library of short, independently
-selectable instruction blocks installed directly in `AGENTS.md`.
+`harness-workshop` makes it easy to adopt and maintain a small, opinionated
+collection of agent working agreements and task workflows. Each item should
+explain the problem it addresses, when it applies, and its tradeoffs. Projects
+choose what fits, review the changes, and keep ownership of their instructions.
 
-The CLI may also install on-demand skills, explicit workflow commands, and
-optional agent-native integrations. Those are secondary surfaces. A repository
-that already explains itself and needs no extra guidance is a successful no-op,
-not an incomplete installation.
+The primary audience is developers shipping and maintaining small production
+projects with coding agents. The catalog shares the maintainer's curated
+practices so adopting them does not require rewriting instructions in every
+repository. Public usefulness comes from clear applicability and defensible
+choices; an item need not apply to every developer.
 
-The generated files remain small, readable, version-controlled, and useful
-without the CLI.
+An approachable, polished CLI makes selection, inspection, installation, and
+maintenance straightforward. Generated files remain readable, version-controlled,
+and useful without the CLI. Selecting nothing is a successful outcome.
 
 ## Central thesis
 
-Good guidance is the smallest set of instructions that reliably changes task
-outcomes for the better.
+Every instruction must earn its place through an explicit working agreement,
+useful task knowledge, or evidence that it addresses a recurring failure.
+Prefer concrete triggers, decisions, exceptions, and completion conditions to
+generic reminders about competent engineering.
 
-The product optimizes for task success per context token, not brevity alone. A
-short rule must still preserve correctness and safety. As models gain reliable
-capabilities, the corresponding harness should shrink: shorten the guidance,
-move it on demand, or delete it.
+More capable models may need fewer explanations of familiar practices. They
+still need preferences and constraints they cannot infer. Guidance should be
+reviewed as models and agent configurations change; shorter text alone does not
+establish improvement. A detailed, selectively loaded skill can justify its
+length when it carries necessary procedure or reference material.
 
-Recommendations require a repository signal and eventually evaluation evidence.
-Nothing is installed merely because it exists in the catalog.
+Repository signals establish relevance, not effectiveness or consent. An
+editorial preference must be presented as such. Claims of improved outcomes
+require observed behavior, with the model, agent configuration, and limitations
+recorded. Nothing is installed merely because it exists in the catalog.
 
 ## Guidance routing
 
 | Surface | Correct use | Loading |
 |---|---|---|
-| Direct block | Atomic behavior needed across most relevant repository changes | Always through `AGENTS.md` |
+| Direct block | An explicit project agreement that applies across relevant changes | Always through `AGENTS.md` |
 | Skill | A recognizable task with a procedure, examples, or references | On demand |
 | Command | A workflow that should run only when explicitly invoked | Explicit |
 | Reference | Background detail used by a skill, not a standalone behavior | Selective |
@@ -41,13 +49,19 @@ Nothing is installed merely because it exists in the catalog.
 A block must declare a stable ID, semantic version, project scope, source,
 loading mode, behavioral outcome, and reason it deserves always-loaded context.
 Its exact word count and token estimate are derived from normalized content.
+Size informs editorial review; no arbitrary word or token range establishes
+validity. Keep the conditions and exceptions needed to interpret the agreement.
 
 Task-specific guidance does not become a block merely because it is short.
 Background information does not become a skill merely because a file exists.
 
 ## Product principles
 
-### Block-first, agent-agnostic core
+### Choose behavior, then its delivery surface
+
+Working agreements and task workflows are both core offerings. Users should
+understand the behavior, applicability, and tradeoffs before choosing it. File
+format or catalog size should not determine which capability matters most.
 
 `AGENTS.md` is the canonical portable project instruction file. Blocks are
 defined once and embedded directly, without mandatory links whose only purpose
@@ -64,28 +78,22 @@ intentional overlay rather than being copied into the portable file.
 
 ### Assessment before installation
 
-Initialization starts with portable blocks. Users see each block's exact word
-count and estimated token cost, then choose numbers, ranges, `all`, or `none`.
-Selecting all requires seeing and accepting the aggregate cost.
-
-Only after the block decision may the user enter the optional integration
-stage, choose an agent, and inspect compatible plugins. Skills and commands stay
-available through explicit `add` operations or a deliberately requested
-secondary catalog workflow.
-
+Selection should reduce repeated setup decisions and make the resulting changes
+easy to inspect. Optional integrations follow the portable content decision.
 Non-interactive assessment never interprets a recommendation as consent to
-modify the repository.
+modify the repository. Current command behavior is documented below; the
+existing blocks-first menu is not a permanent product constraint.
 
-### Context is a maintained budget
+### Context and operational cost
 
-Always-loaded rules must be atomic, concise, and broadly applicable to the
-repositories that adopt them. Detailed procedures and current framework
-knowledge belong on demand. Large examples and references are loaded only when
-needed.
+Always-loaded rules must be focused and applicable to the repositories that
+adopt them. Detailed procedures and current framework knowledge belong on
+demand. Large examples and references are loaded only when needed.
 
 The CLI shows individual and aggregate context costs before applying blocks.
-Catalog review applies deletion pressure: retain, shorten, demote, replace, or
-remove each component.
+Review also considers unnecessary work, repeated permission requests, conflicts,
+and maintenance burden. Catalog review chooses whether to retain, shorten,
+demote, replace, or remove each component.
 
 ### Declarative and reversible
 
@@ -100,6 +108,12 @@ remain readable for safe migration.
 The CLI never overwrites unowned content. Ambiguous ownership or local drift is
 reported and requires explicit resolution.
 
+Preserving bytes does not establish that two instructions agree. Users must be
+able to inspect additions beside existing guidance. Local customization is a
+legitimate need; the product should make ownership and update consequences
+clear. Today, edits inside managed content are reported as drift and require
+explicit resolution before replacement.
+
 ### Integrations tell the operational truth
 
 Plugins are settings and runtime integrations, not prompt components. They must
@@ -113,15 +127,26 @@ verify, update, and remove them honestly.
 
 ### Small coherent catalog
 
-The catalog exists first to encode one trusted workflow well. Similar tools are
-not carried as undifferentiated alternatives. Broad methodology bundles are not
-combined with overlapping local rules without explicit conflict handling and
-evidence that the combination helps.
+The catalog encodes a recognizable set of working preferences and workflows.
+Each addition needs a stated audience, a concrete problem or policy choice,
+applicability boundaries, and tradeoffs in its content or review record. A
+scoped framework or provider workflow can qualify when others can use it
+without inheriting private account details or project-specific assumptions.
+
+Avoid undifferentiated alternatives and overlapping rules. Preserve examples of
+observed failures and explain rejected candidates. Engineering judgment should
+be visible in these choices, including exceptions and reasons to install
+nothing. Installer tests establish lifecycle behavior, not instruction efficacy.
 
 Remote content is pinned, attributable, license-preserving, bounded, and loaded
 on demand.
 
-## Intended experience
+## Current CLI
+
+Interactive `init` currently presents blocks first, then offers optional agent
+integrations. Users can select numbers, ranges, `all`, or `none`; selecting all
+requires accepting the aggregate context cost. Skills and commands are available
+through explicit `add` operations or `add --interactive`.
 
 ```text
 harness-workshop init                       # assess blocks, optionally integrations
@@ -144,6 +169,7 @@ and `--dry-run`.
 
 - Becoming a universal agent package manager.
 - Installing universal defaults into every repository.
+- Encoding private account details or assumptions that only fit one project.
 - Loading detailed task procedures in every session.
 - Treating every third-party recommendation as managed state.
 - Normalizing agent-native features that have no safe equivalent.
@@ -153,6 +179,9 @@ and `--dry-run`.
 ## Risks to keep visible
 
 - Over-compression can remove constraints that make guidance reliable.
+- Broad applicability can dilute concrete experience into generic advice.
+- Locally useful preferences may have no measurable benefit in another agent.
+- A polished installer cannot compensate for an undistinguished catalog.
 - Weak recommendation signals can turn optional policy into accidental defaults.
 - A growing catalog can recreate the context and maintenance bloat it opposes.
 - Marketplace identifiers, prerequisites, and remote skills change over time.
@@ -164,11 +193,13 @@ and `--dry-run`.
 
 `harness-workshop` succeeds when:
 
-- a user encounters concise portable blocks before any vendor choice;
+- a user can recognize which agreements and workflows fit their project;
+- repeated setup requires less effort than manually maintaining copied text;
+- each component has a defensible purpose, scope, and documented tradeoffs;
 - selecting nothing is a clear, successful outcome;
 - every block exposes its individual and aggregate context cost;
 - the same installation applied twice produces no changes;
 - every managed component can be inspected, updated, and removed safely;
 - agent integrations remain optional and verify known prerequisites;
 - portable content works in multiple agents without duplicated core text; and
-- periodic evaluation causes obsolete guidance to shrink or disappear.
+- review retires guidance that is redundant, counterproductive, or obsolete.

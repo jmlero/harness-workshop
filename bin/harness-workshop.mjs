@@ -96,6 +96,8 @@ async function initialize({ cwd, home, flags }) {
 
   if (flags.yes) {
     console.log(`${formatProgress("Assessment complete")} · no components installed automatically`);
+    console.log("Repository left unchanged.");
+    return;
   } else {
     if (!process.stdin.isTTY && !flags.interactive) {
       throw new Error("Interactive init needs a terminal; use --yes, --interactive, or add components explicitly");
@@ -140,7 +142,7 @@ async function initialize({ cwd, home, flags }) {
     }
   }
 
-  if (!existing && !selectedIds.length) {
+  if (!selectedIds.length) {
     console.log("No components selected. Repository left unchanged.");
     return;
   }
@@ -558,7 +560,7 @@ Usage:
   harness-workshop doctor
 
 Options:
-  -y, --yes       Assess without installing recommendations automatically
+  -y, --yes       For init, assess without changing project or user files
   --interactive   Prompt even when standard input is piped
   --dry-run       Print exact changes without writing
   --force         Replace drifted managed content

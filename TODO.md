@@ -1,5 +1,61 @@
 # TODO
 
+- [x] `T022` Preserve existing installations when interactive init selects nothing.
+  - Description: Extend the no-op initialization contract to existing projects
+    when users skip blocks and integrations, decline all blocks, or abandon
+    integration selection. Empty selection must not repair drift or apply
+    adapter flags. Explicit component selections must still install normally.
+  - Depends on: `T005`, `T016`, `T021`.
+  - Done when: Interactive regression tests preserve project and user files
+    for missing content, local edits, rejected selections, and fully installed
+    blocks; explicit selection on an existing project still works; README
+    explains the no-op behavior; `npm test` and `npm run check` pass.
+  - Validation: Four regression cases reproduced unintended repairs and now
+    pass; a fifth confirms explicit installation still works. Both validation
+    commands passed all 54 tests; `git diff --check` passed.
+
+- [x] `T021` Keep non-interactive assessment read-only for existing projects.
+  - Description: Make `init --yes` honor the existing assessment-only promise
+    when a manifest already exists. It must not repair missing content, replace
+    local edits, migrate stored state, or change adapters, even with `--force`.
+    Keep repair and installation available through explicit lifecycle commands.
+  - Depends on: `T005`, `T019`.
+  - Done when: Regression coverage proves that project and user files remain
+    unchanged for missing content, local drift, adapter flags, and legacy state;
+    assessment does not claim installation health; explicit update still
+    repairs missing content; README and help explain the behavior; `npm test`
+    and `npm run check` pass.
+  - Validation: Four regression tests reproduced the old behavior and now pass.
+    Both validation commands passed all 49 tests; `git diff --check` passed.
+
+- [x] `T020` Explain when to adopt or skip each portable block.
+  - Description: Apply the revised vision to the existing block library with a
+    public selection guide. Explain applicability, reasons to skip, and concrete
+    tradeoffs without duplicating installed instructions or claiming measured
+    efficacy. Link the guide from README and the maintenance workflow.
+  - Depends on: `T019`, `T008`.
+  - Done when: All seven current blocks link to their canonical source and have
+    adoption, skip, and tradeoff guidance; overlap and existing-policy conflicts
+    are explained; example commands and local links are verified; `npm test`
+    and `npm run check` pass.
+  - Validation: Verified all seven entries, 18 local links, and the three
+    example commands in a temporary project; dry-run wrote no files. Both test
+    commands passed all 45 tests; `git diff --check` passed.
+
+- [x] `T019` Reframe the vision around curated working agreements and workflows.
+  - Description: Adopt the user-approved direction: useful, scoped instructions
+    and task workflows for developers shipping projects with coding agents.
+    Explain public reuse, editorial judgment, evidence limits, and ownership.
+    Make one implementation improvement: remove the arbitrary 30-150 token
+    validity gate for blocks while preserving context-cost reporting.
+  - Depends on: `T001`, `T003`, `T006`.
+  - Done when: VISION and README describe the revised promise and accurately
+    distinguish current CLI behavior from product direction; catalog guidance
+    treats size as an editorial consideration; regression tests accept blocks
+    outside the old range, reject empty content, and preserve derived costs;
+    `npm test` and `npm run check` pass.
+  - Validation: Both commands passed all 45 tests; `git diff --check` passed.
+
 - [x] `T017` Distill reusable App Meerkat guidance into portable blocks.
   - Description: Review every Markdown instruction under
     `/Users/jmolero/personal/github/app-meerkat/agents`, extract only concise

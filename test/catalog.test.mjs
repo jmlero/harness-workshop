@@ -67,8 +67,8 @@ test("catalog contains the reviewed block-first component set", () => {
       assert.ok(component.alwaysOnJustification);
       assert.equal(Object.hasOwn(component.context, "estimatedTokens"), false);
       const cost = componentContextCost(component);
-      assert.ok(cost.words >= 25 && cost.words <= 90, `${component.id}: ${cost.words} words`);
-      assert.ok(cost.estimatedTokens >= 30 && cost.estimatedTokens <= 150, component.id);
+      assert.ok(cost.words > 0, `${component.id}: ${cost.words} words`);
+      assert.ok(cost.estimatedTokens > 0, component.id);
     }
   }
 });
@@ -127,6 +127,54 @@ test("word and token costs are derived and aggregate only always-loaded blocks",
     words: 0,
     estimatedTokens: 0,
   });
+});
+
+test("block size informs context costs without determining validity", (context) => {
+  const block = listComponents().find(({ id }) => id === "block/tdd");
+  const source = path.join(repository, "catalog", block.content.path);
+  const readFile = fs.readFileSync;
+  let content;
+  context.mock.method(fs, "readFileSync", (file, ...options) => file === source
+    ? content
+    : readFile(file, ...options));
+
+  const short = "Keep unrelated working-tree changes out of commits.\n";
+  const long = [
+    "When a change affects a database migration, inspect the current schema and the deployment sequence.",
+    "Keep the migration compatible with the application version that remains live during deployment.",
+    "Separate destructive cleanup from introducing replacement fields so existing readers can keep working.",
+    "Check whether backfills can be resumed and whether they hold locks that block normal requests.",
+    "Exercise the migration against representative existing data and record how to recover from a partial failure.",
+    "If the environment cannot reproduce these conditions, report the missing evidence before claiming readiness.",
+    "For a disposable local database, use the repository's documented reset workflow when production compatibility is irrelevant.",
+  ].join("\n") + "\n";
+
+  for (const fixture of [short, long]) {
+    content = fixture;
+    const expected = {
+      words: fixture.trim().split(/\s+/u).length,
+      estimatedTokens: Math.ceil(Buffer.byteLength(fixture, "utf8") / 4),
+    };
+    assert.ok(expected.estimatedTokens < 30 || expected.estimatedTokens > 150);
+    assert.doesNotThrow(() => validateCatalogComponent(block));
+    assert.deepEqual(componentContextCost(block), expected);
+    assert.deepEqual(aggregateContextCost([block]), expected);
+  }
+});
+
+test("blocks still require nonempty guidance", (context) => {
+  const block = listComponents().find(({ id }) => id === "block/tdd");
+  const source = path.join(repository, "catalog", block.content.path);
+  const readFile = fs.readFileSync;
+  let content;
+  context.mock.method(fs, "readFileSync", (file, ...options) => file === source
+    ? content
+    : readFile(file, ...options));
+
+  for (const fixture of ["", " \t\r\n  "]) {
+    content = fixture;
+    assert.throws(() => validateCatalogComponent(block), /must contain guidance/);
+  }
 });
 
 test("App Meerkat guidance is routed between compact blocks and on-demand workflows", () => {

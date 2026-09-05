@@ -34,6 +34,77 @@ test("non-interactive assessment never treats stack or adapter signals as consen
   assert.equal(fs.existsSync(path.join(fixture.project, "CLAUDE.md")), false);
 });
 
+test("non-interactive assessment leaves missing installed content for explicit repair", (context) => {
+  const fixture = makeFixture(context);
+  const added = run(fixture, "add", "block/tdd");
+  assert.equal(added.status, 0, added.stderr);
+  const original = read(fixture.project, "AGENTS.md");
+  fs.unlinkSync(path.join(fixture.project, "AGENTS.md"));
+  const before = snapshotTree(fixture.root);
+
+  const assessed = run(fixture, "init", "--yes");
+  assert.equal(assessed.status, 0, assessed.stderr);
+  assert.match(assessed.stdout, /Assessment complete/);
+  assert.match(assessed.stdout, /Repository left unchanged/);
+  assert.doesNotMatch(assessed.stdout, /Healthy|Workshop ready|Change set/);
+  assert.deepEqual(snapshotTree(fixture.root), before);
+
+  assert.equal(run(fixture, "doctor").status, 1);
+  const repaired = run(fixture, "update");
+  assert.equal(repaired.status, 0, repaired.stderr);
+  assert.equal(read(fixture.project, "AGENTS.md"), original);
+});
+
+test("non-interactive assessment preserves local drift even with force", (context) => {
+  const fixture = makeFixture(context);
+  const added = run(fixture, "add", "block/tdd");
+  assert.equal(added.status, 0, added.stderr);
+  const instructions = path.join(fixture.project, "AGENTS.md");
+  fs.writeFileSync(instructions, read(fixture.project, "AGENTS.md")
+    .replace("For features and bug fixes:", "For parser bug fixes only:"));
+  const before = snapshotTree(fixture.root);
+
+  for (const flags of [[], ["--force"]]) {
+    const assessed = run(fixture, "init", "--yes", ...flags);
+    assert.equal(assessed.status, 0, assessed.stderr);
+    assert.match(assessed.stdout, /Repository left unchanged/);
+    assert.deepEqual(snapshotTree(fixture.root), before);
+  }
+});
+
+test("non-interactive assessment cannot enable or disable existing adapters", (context) => {
+  for (const adapter of ["none", "claude"]) {
+    const fixture = makeFixture(context);
+    const components = ["block/tdd", "command/verify-work"];
+    if (adapter === "claude") components.push("plugin/github");
+    const added = run(fixture, "add", ...components, "--adapter", adapter);
+    assert.equal(added.status, 0, added.stderr);
+    const before = snapshotTree(fixture.root);
+
+    const assessed = run(fixture, "init", "--yes", "--force", "--scope", "user",
+      "--adapter", adapter === "none" ? "claude" : "none");
+    assert.equal(assessed.status, 0, assessed.stderr);
+    assert.match(assessed.stdout, /Repository left unchanged/);
+    assert.deepEqual(snapshotTree(fixture.root), before);
+  }
+});
+
+test("non-interactive assessment does not migrate legacy manifests or create lockfiles", (context) => {
+  const fixture = makeFixture(context);
+  fs.mkdirSync(path.join(fixture.project, ".harness-workshop"));
+  fs.writeFileSync(path.join(fixture.project, ".harness-workshop", "manifest.json"), JSON.stringify({
+    manifestVersion: 1,
+    targets: ["codex"],
+    components: [{ id: "block/tdd", scope: "project" }],
+  }));
+  const before = snapshotTree(fixture.root);
+
+  const assessed = run(fixture, "init", "--yes");
+  assert.equal(assessed.status, 0, assessed.stderr);
+  assert.match(assessed.stdout, /Repository left unchanged/);
+  assert.deepEqual(snapshotTree(fixture.root), before);
+});
+
 test("interactive init presents blocks first and can install one without an adapter", async (context) => {
   const fixture = makeFixture(context);
   const initialized = await runInteractive(fixture, [
@@ -85,6 +156,94 @@ test("interactive init can abort the optional integration stage as a no-op", asy
   assert.match(initialized.stdout, /Agent integrations \(5\)/);
   assert.match(initialized.stdout, /Repository left unchanged/);
   assert.deepEqual(fs.readdirSync(fixture.project), []);
+});
+
+test("interactive init leaves an existing installation unchanged when all selections are skipped", async (context) => {
+  const fixture = makeFixture(context);
+  const added = run(fixture, "add", "block/tdd");
+  assert.equal(added.status, 0, added.stderr);
+  fs.unlinkSync(path.join(fixture.project, "AGENTS.md"));
+  const before = snapshotTree(fixture.root);
+
+  const initialized = await runInteractive(fixture, [
+    [/Select numbers or ranges/, "none"],
+    [/Configure optional agent integrations/, "n"],
+  ], "init", "--interactive", "--adapter", "claude");
+  assert.equal(initialized.status, 0, initialized.stderr);
+  assert.match(initialized.stdout, /Repository left unchanged/);
+  assert.doesNotMatch(initialized.stdout, /Healthy|Workshop ready|Change set/);
+  assert.deepEqual(snapshotTree(fixture.root), before);
+});
+
+test("interactive init preserves local edits when all blocks are declined", async (context) => {
+  const fixture = makeFixture(context);
+  const added = run(fixture, "add", "block/tdd", "plugin/github");
+  assert.equal(added.status, 0, added.stderr);
+  fs.writeFileSync(path.join(fixture.project, "AGENTS.md"), read(fixture.project, "AGENTS.md")
+    .replace("For features and bug fixes:", "For parser bug fixes only:"));
+  const before = snapshotTree(fixture.root);
+
+  const initialized = await runInteractive(fixture, [
+    [/Select numbers or ranges/, "all"],
+    [/Install all available blocks/, "n"],
+    [/Configure optional agent integrations/, "n"],
+  ], "init", "--interactive", "--force");
+  assert.equal(initialized.status, 0, initialized.stderr);
+  assert.match(initialized.stdout, /Repository left unchanged/);
+  assert.deepEqual(snapshotTree(fixture.root), before);
+});
+
+test("interactive init preserves existing state when integration selection is abandoned", async (context) => {
+  const fixture = makeFixture(context);
+  const added = run(fixture, "add", "block/tdd", "command/verify-work");
+  assert.equal(added.status, 0, added.stderr);
+  fs.unlinkSync(path.join(fixture.project, ".agents", "skills", "verify-work", "SKILL.md"));
+  const before = snapshotTree(fixture.root);
+
+  const initialized = await runInteractive(fixture, [
+    [/Select numbers or ranges/, "none"],
+    [/Configure optional agent integrations/, "y"],
+    [/Agent for integrations/, ""],
+    [/Select numbers or ranges/, "none"],
+  ], "init", "--interactive", "--adapter", "claude");
+  assert.equal(initialized.status, 0, initialized.stderr);
+  assert.match(initialized.stdout, /Repository left unchanged/);
+  assert.deepEqual(snapshotTree(fixture.root), before);
+});
+
+test("interactive init leaves fully selected block installations unchanged", async (context) => {
+  const fixture = makeFixture(context);
+  const catalog = JSON.parse(fs.readFileSync(path.join(repository, "catalog", "catalog.json"), "utf8"));
+  const blockIds = catalog.components.filter(({ kind }) => kind === "block").map(({ id }) => id);
+  const added = run(fixture, "add", ...blockIds);
+  assert.equal(added.status, 0, added.stderr);
+  fs.unlinkSync(path.join(fixture.project, "AGENTS.md"));
+  const before = snapshotTree(fixture.root);
+
+  const initialized = await runInteractive(fixture, [
+    [/Configure optional agent integrations/, "n"],
+  ], "init", "--interactive");
+  assert.equal(initialized.status, 0, initialized.stderr);
+  assert.match(initialized.stdout, /all available blocks are already installed/);
+  assert.match(initialized.stdout, /Repository left unchanged/);
+  assert.deepEqual(snapshotTree(fixture.root), before);
+});
+
+test("interactive init still adds an explicit component to an existing installation", async (context) => {
+  const fixture = makeFixture(context);
+  const added = run(fixture, "add", "block/tdd");
+  assert.equal(added.status, 0, added.stderr);
+
+  const initialized = await runInteractive(fixture, [
+    [/Select numbers or ranges/, "1"],
+    [/Configure optional agent integrations/, "n"],
+    [/Default scope/, "project"],
+  ], "init", "--interactive");
+  assert.equal(initialized.status, 0, initialized.stderr);
+  const manifest = JSON.parse(read(fixture.project, ".harness-workshop/manifest.json"));
+  assert.deepEqual(manifest.components.map(({ id }) => id), ["block/ponytail", "block/tdd"]);
+  assert.match(read(fixture.project, "AGENTS.md"), /<!--hw:block\/ponytail-->/);
+  assert.match(run(fixture, "doctor").stdout, /Healthy.*2 components/);
 });
 
 test("interactive init offers Claude plugins only after entering integrations", async (context) => {
@@ -525,6 +684,17 @@ test("legacy manifests and target flags migrate to optional adapters", (context)
   assert.deepEqual(JSON.parse(read(fixture.project, ".harness-workshop/manifest.json")).adapters, ["claude"]);
   assert.ok(fs.existsSync(path.join(fixture.project, "CLAUDE.md")));
 });
+
+function snapshotTree(directory) {
+  return Object.fromEntries(fs.readdirSync(directory).sort().map((name) => {
+    const file = path.join(directory, name);
+    const stat = fs.lstatSync(file);
+    const mode = stat.mode & 0o777;
+    if (stat.isSymbolicLink()) return [name, { target: fs.readlinkSync(file), mode }];
+    if (stat.isDirectory()) return [name, { entries: snapshotTree(file), mode }];
+    return [name, { content: fs.readFileSync(file, "utf8"), mode }];
+  }));
+}
 
 function makeFixture(context) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "harness-workshop-cli-"));

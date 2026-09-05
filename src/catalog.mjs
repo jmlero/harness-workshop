@@ -488,9 +488,8 @@ export function validateCatalogComponent(component, ids = new Set()) {
         throw new Error(`Instruction block must declare ${field}: ${component.id}`);
       }
     }
-    const { estimatedTokens } = componentContextCost(component);
-    if (estimatedTokens < 30 || estimatedTokens > 150) {
-      throw new Error(`Instruction block must stay within the 30-150 token target: ${component.id}`);
+    if (!bundledContent(component).trim()) {
+      throw new Error(`Instruction block must contain guidance: ${component.id}`);
     }
   }
   if (component.kind === "plugin") {

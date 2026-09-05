@@ -1,15 +1,19 @@
 # harness-workshop
 
-A dependency-free Node.js CLI for adding the minimum useful agent guidance to a
-new or existing repository.
+A dependency-free Node.js CLI for adopting and maintaining a small, opinionated
+collection of agent working agreements and task workflows in new or existing
+projects.
 
-Concise, portable instruction blocks are the first-class product. They are
-installed directly in `AGENTS.md`, work without the CLI afterward, and remain
-independently selectable. Skills and commands are secondary, on-demand
-workflows. Agent-specific plugins are an optional final stage.
+Choose the maintainer's curated practices that fit your project, inspect the
+changes, and install them without rewriting instructions each time. The catalog
+is aimed at developers shipping and maintaining small production projects with
+coding agents. Its working preferences are opt-in; individual entries have
+different scopes and are not universal defaults.
 
-A successful assessment may install nothing. As models improve, guidance that
-no longer changes outcomes should be shortened, moved on demand, or removed.
+Portable blocks install directly in `AGENTS.md`; skills and explicit commands
+provide task workflows. Installed content remains readable and useful without
+the CLI. Agent-specific integrations are optional. Selecting nothing is a
+successful outcome.
 
 ## Start
 
@@ -27,9 +31,16 @@ Interactive initialization follows two stages:
 2. Optionally choose an agent and configure compatible integrations. This stage
    is disabled by default.
 
-`init --yes` performs the assessment non-interactively but installs no
-recommendations automatically. Use `add` for an explicit non-interactive
-selection.
+If you finish without selecting any new components, interactive `init` leaves
+project and user files unchanged, including in existing installations. This
+also applies after declining all blocks or skipping the integration selection;
+`--force` and adapter flags do not turn an empty selection into a repair.
+
+`init --yes` performs the assessment non-interactively and leaves project and
+user files unchanged, including in an existing installation. Adapter, scope,
+and force flags do not turn assessment into installation or repair. Assessment
+does not verify installation health: use `doctor` to inspect drift, `update` to
+apply repairs or updates, and `add` for an explicit non-interactive selection.
 
 ```bash
 harness-workshop list blocks
@@ -74,12 +85,20 @@ symlink is refused unless `--force` is explicit.
 | `block/ci-production-parity` | Keep CI and production execution aligned |
 | `block/no-unfinished-ui` | Omit unavailable product paths |
 
+Use the [block selection guide](docs/choosing-blocks.md) to compare when to
+adopt each agreement, when to skip it, and its tradeoffs. It also explains
+overlap between blocks and how to preview a selection before installing it.
+
 The CLI normalizes line endings, trims the Markdown, and counts whitespace-
 separated words. Its token estimate is the normalized UTF-8 byte length divided
 by four and rounded up. These costs are derived rather than duplicated in
 catalog metadata. Run `harness-workshop list blocks` for current values.
 
-## Secondary workflows
+Block validation requires nonempty guidance and its declared metadata, with no
+minimum or maximum token count. Context cost informs review; applicability,
+clear conditions, and necessary exceptions determine whether a block belongs.
+
+## Task workflows
 
 Bundled skills cover code audits, documentation audits, pull-request reviews,
 and frontend verification. Version-aware FastAPI and Terraform skills are
@@ -123,6 +142,21 @@ metadata stays in the lockfile instead of consuming prompt context. Legacy
 verbose markers remain readable and migrate safely on the next update. The CLI
 never overwrites unowned content and refuses locally modified managed content
 unless `--force` is explicit.
+
+Review additions alongside existing instructions: preserving user-authored text
+does not prove that the combined guidance is free of conflicting policies.
+
+## Curation and evidence
+
+Entries share explicit working preferences and scoped procedures. A framework
+or provider workflow can be useful publicly when its prerequisites are clear
+and it does not depend on private project assumptions. Review records explain
+the current choices and candidates that were rejected.
+
+Passing installer tests establishes installation and lifecycle behavior. It
+does not establish that a prompt improves model performance. The recorded
+completion-evidence comparison is a calibration example, not measured efficacy
+evidence. Context estimates likewise measure cost, not quality.
 
 See [Grok Build compatibility](docs/grok-build-compatibility.md) for the tested
 support matrix, [catalog maintenance](docs/catalog-maintenance.md) for the

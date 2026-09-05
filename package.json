@@ -1,7 +1,7 @@
 {
   "name": "harness-workshop",
   "version": "0.1.0",
-  "description": "Block-first CLI for minimum portable agent guidance and optional integrations.",
+  "description": "CLI for curated agent working agreements and task workflows.",
   "type": "module",
   "bin": {
     "harness-workshop": "./bin/harness-workshop.mjs"
