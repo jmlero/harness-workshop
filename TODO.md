@@ -1,5 +1,41 @@
 # TODO
 
+Status as of 2026-09-05: all 24 tasks are complete; no open tasks remain.
+Latest validation: `npm test` and `npm run check` passed all 67 tests, and
+`git diff --check` passed.
+
+- [x] `T024` Recheck planned paths before applying changes.
+  - Description: Refuse an outdated change set when a planned path changes
+    during planning, such as while a remote skill is downloading. Check every
+    operation against its original file state before any writes, deletions,
+    or symlink changes, including when `--force` is supplied.
+  - Depends on: `T010`, `T023`.
+  - Done when: Regression tests preserve newer content, newly occupied paths,
+    changed symlinks, and permission edits; a conflict leaves the entire change
+    set and stored state unapplied; remote-download coverage reproduces the
+    issue; README explains retry behavior and the concurrency limit; `npm test`
+    and `npm run check` pass.
+  - Validation: All nine new regression cases reproduced the issue and now
+    pass, including a file created during remote resolution with force enabled.
+    Both validation commands passed all 67 tests; `git diff --check` passed.
+
+- [x] `T023` Refuse cleanup when a managed path changes type.
+  - Description: Treat a managed symlink replaced by a regular file, or a
+    managed file replaced by a symlink, as drift during removal and stale-file
+    cleanup. Preserve replacement content and stored state until the user
+    explicitly resolves the conflict, including when disabling an adapter or
+    moving a skill between project and user scopes.
+  - Depends on: `T010`, `T015`.
+  - Done when: Regression tests cover both type changes, Claude bridges,
+    adapter and scope cleanup, unchanged state on refusal, and explicit
+    forced removal without touching symlink targets; directories remain
+    protected; README explains the behavior; `npm test` and `npm run check`
+    pass.
+  - Validation: Three new regression tests reproduced silent deletion of
+    replacement paths and now pass, including adapter and scope cleanup. A
+    fourth confirms replacement directories remain protected with force.
+    Both validation commands passed all 58 tests; `git diff --check` passed.
+
 - [x] `T022` Preserve existing installations when interactive init selects nothing.
   - Description: Extend the no-op initialization contract to existing projects
     when users skip blocks and integrations, decline all blocks, or abandon

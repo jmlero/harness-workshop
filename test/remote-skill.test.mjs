@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { reconcile } from "../src/reconcile.mjs";
-import { emptyLock } from "../src/state.mjs";
+import { emptyLock, jsonDocument, statePaths } from "../src/state.mjs";
 
 test("remote skill packages install, detect drift, update, and remove every file", async (context) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "harness-workshop-remote-skill-"));
@@ -73,6 +73,46 @@ test("remote skill packages install, detect drift, update, and remove every file
   assert.equal(fs.existsSync(skill), false);
   assert.equal(fs.existsSync(routingReference), false);
   assert.equal(fs.existsSync(license), false);
+});
+
+test("apply refuses content created during remote planning even with force", async (context) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "harness-workshop-remote-race-"));
+  const cwd = path.join(root, "project");
+  const home = path.join(root, "home");
+  fs.mkdirSync(cwd);
+  fs.mkdirSync(home);
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const skillRoot = path.join(home, ".agents", "skills", "audit-code");
+  const skill = path.join(skillRoot, "SKILL.md");
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  const fetchFixture = remoteFixture(() => 1);
+  globalThis.fetch = async (url) => {
+    // The earlier bundled skill is already planned when the remote fetch starts.
+    fs.mkdirSync(skillRoot, { recursive: true });
+    fs.writeFileSync(skill, "User-created guidance during download.\n");
+    return fetchFixture(url);
+  };
+
+  const manifest = {
+    manifestVersion: 2,
+    adapters: [],
+    components: [
+      { id: "skill/audit-code", scope: "user" },
+      { id: "skill/fastapi", scope: "project" },
+    ],
+  };
+  const result = await reconcile({ cwd, home, manifest, previousLock: emptyLock(), force: true });
+  const state = statePaths(cwd);
+  result.planner.write(state.manifest, jsonDocument(manifest), { allowExisting: true });
+  result.planner.write(state.lock, jsonDocument(result.lock), { allowExisting: true });
+
+  assert.throws(() => result.planner.apply(), /changed after planning.*audit-code/);
+  assert.equal(fs.readFileSync(skill, "utf8"), "User-created guidance during download.\n");
+  assert.deepEqual(fs.readdirSync(cwd), []);
+  assert.deepEqual(fs.readdirSync(path.dirname(skillRoot)), ["audit-code"]);
+  assert.deepEqual(fs.readdirSync(skillRoot), ["SKILL.md"]);
 });
 
 function remoteFixture(getGeneration) {

@@ -143,6 +143,23 @@ verbose markers remain readable and migrate safely on the next update. The CLI
 never overwrites unowned content and refuses locally modified managed content
 unless `--force` is explicit.
 
+Cleanup of managed skill files and adapter symlinks refuses a file replaced by
+a symlink, or a symlink replaced by a file. This applies to removal, disabling
+adapters, and moving skills between project and user scopes; a refusal leaves
+files and stored state unchanged. Restore the expected path type before
+retrying, or review the deletion with `--force --dry-run` before explicitly
+forcing cleanup. Forced cleanup removes the replacement path without following
+symlinks; directories are always preserved. For a replaced `CLAUDE.md` symlink,
+run `update` first to preserve the replacement file as an overlay with a managed
+import, then retry removal.
+
+Before applying, the CLI rechecks every path it will change. If content,
+permissions, file types, or symlink targets changed during planning, it stops
+before writing any part of the change set, including the manifest and lockfile.
+This check also applies with `--force`; rerun the command to plan against the
+current files. It detects changes before applying but does not lock the
+filesystem against concurrent edits while writes are in progress.
+
 Review additions alongside existing instructions: preserving user-authored text
 does not prove that the combined guidance is free of conflicting policies.
 

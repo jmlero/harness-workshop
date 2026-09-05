@@ -574,6 +574,105 @@ test("Claude refuses an unrelated symlink unless force explicitly replaces it", 
   assert.equal(fs.readlinkSync(path.join(fixture.project, "CLAUDE.md")), "AGENTS.md");
 });
 
+test("cleanup refuses a Claude bridge that changed type until force is explicit", { skip: process.platform === "win32" }, (context) => {
+  const fixture = makeFixture(context);
+  assert.equal(run(fixture, "add", "block/tdd", "--adapter", "claude").status, 0);
+  const bridge = path.join(fixture.project, "CLAUDE.md");
+  fs.unlinkSync(bridge);
+  fs.writeFileSync(bridge, "# Claude-only overlay\n");
+  const before = snapshotTree(fixture.root);
+
+  for (const arguments_ of [
+    ["remove", "block/tdd"],
+    ["add", "block/tdd", "--adapter", "none"],
+  ]) {
+    const refused = run(fixture, ...arguments_);
+    assert.equal(refused.status, 1, refused.stdout);
+    assert.match(refused.stderr, /changed type.*CLAUDE\.md/i);
+    assert.deepEqual(snapshotTree(fixture.root), before);
+  }
+
+  const preview = run(fixture, "remove", "block/tdd", "--force", "--dry-run");
+  assert.equal(preview.status, 0, preview.stderr);
+  assert.match(preview.stdout, /DELETE \.\/CLAUDE\.md\n-# Claude-only overlay/);
+  assert.deepEqual(snapshotTree(fixture.root), before);
+
+  const removed = run(fixture, "remove", "block/tdd", "--force");
+  assert.equal(removed.status, 0, removed.stderr);
+  assert.equal(fs.existsSync(bridge), false);
+  assert.match(run(fixture, "doctor").stdout, /Healthy/);
+});
+
+test("cleanup refuses a user skill bridge that changed type when removing or disabling Claude", { skip: process.platform === "win32" }, (context) => {
+  const fixture = makeFixture(context);
+  assert.equal(run(fixture, "add", "skill/audit-code", "--scope", "user", "--adapter", "claude").status, 0);
+  const canonical = read(fixture.home, ".agents/skills/audit-code/SKILL.md");
+  const bridge = path.join(fixture.home, ".claude", "skills", "audit-code");
+  fs.unlinkSync(bridge);
+  fs.writeFileSync(bridge, "User-authored replacement.\n");
+  const before = snapshotTree(fixture.root);
+
+  for (const arguments_ of [
+    ["remove", "skill/audit-code"],
+    ["add", "skill/audit-code", "--adapter", "none"],
+  ]) {
+    const refused = run(fixture, ...arguments_);
+    assert.equal(refused.status, 1, refused.stdout);
+    assert.match(refused.stderr, /changed type.*audit-code/i);
+    assert.deepEqual(snapshotTree(fixture.root), before);
+  }
+
+  const disabled = run(fixture, "add", "skill/audit-code", "--adapter", "none", "--force");
+  assert.equal(disabled.status, 0, disabled.stderr);
+  assert.equal(fs.existsSync(bridge), false);
+  assert.equal(read(fixture.home, ".agents/skills/audit-code/SKILL.md"), canonical);
+  assert.match(run(fixture, "doctor").stdout, /Healthy/);
+});
+
+test("cleanup refuses a skill file that changed type during removal or scope migration", { skip: process.platform === "win32" }, (context) => {
+  const fixture = makeFixture(context);
+  assert.equal(run(fixture, "add", "skill/audit-code").status, 0);
+  const skill = path.join(fixture.project, ".agents", "skills", "audit-code", "SKILL.md");
+  const target = path.join(fixture.home, "custom-skill.md");
+  fs.writeFileSync(target, "User-authored skill.\n");
+  fs.unlinkSync(skill);
+  fs.symlinkSync(target, skill);
+  const before = snapshotTree(fixture.root);
+
+  for (const arguments_ of [
+    ["remove", "skill/audit-code"],
+    ["add", "skill/audit-code", "--scope", "user"],
+  ]) {
+    const refused = run(fixture, ...arguments_);
+    assert.equal(refused.status, 1, refused.stdout);
+    assert.match(refused.stderr, /changed type.*SKILL\.md/i);
+    assert.deepEqual(snapshotTree(fixture.root), before);
+  }
+
+  const removed = run(fixture, "remove", "skill/audit-code", "--force");
+  assert.equal(removed.status, 0, removed.stderr);
+  assert.throws(() => fs.lstatSync(skill), { code: "ENOENT" });
+  assert.deepEqual(snapshotTree(fixture.home), before.home.entries);
+  assert.match(run(fixture, "doctor").stdout, /Healthy/);
+});
+
+test("cleanup preserves a replacement directory even when force is explicit", (context) => {
+  const fixture = makeFixture(context);
+  assert.equal(run(fixture, "add", "skill/audit-code").status, 0);
+  const skill = path.join(fixture.project, ".agents", "skills", "audit-code", "SKILL.md");
+  fs.unlinkSync(skill);
+  fs.mkdirSync(skill);
+  fs.writeFileSync(path.join(skill, "notes.md"), "Keep these notes.\n");
+  const before = snapshotTree(fixture.root);
+
+  for (const flags of [[], ["--force"]]) {
+    const refused = run(fixture, "remove", "skill/audit-code", ...flags);
+    assert.equal(refused.status, 1, refused.stdout);
+    assert.match(refused.stderr, /Refusing to delete directory/);
+    assert.deepEqual(snapshotTree(fixture.root), before);
+  }
+});
+
 test("detects drift and refuses destructive removal unless forced", (context) => {
   const fixture = makeFixture(context);
   const installed = run(fixture, "add", "skill/audit-code");

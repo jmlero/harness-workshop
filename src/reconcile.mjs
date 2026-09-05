@@ -263,7 +263,7 @@ function uninstallBlock(id, previous, planner, cwd, force) {
   }
   const result = removeManagedBlock(current.content, id);
   const record = previous.files?.find((candidate) => candidate.kind === "block");
-  if (!result && record?.created) planner.delete(file, { owned: true });
+  if (!result && record?.created) planner.delete(file, { owned: true, expectedKind: "file" });
   else planner.write(file, result, { allowExisting: true });
 }
 
@@ -278,6 +278,7 @@ function removeFiles(files = [], planner) {
     if (record.kind === "block") continue;
     planner.delete(resolvePortablePath(record.path, planner), {
       owned: true,
+      expectedKind: record.kind,
       expectedIntegrity: record.integrity,
       expectedTarget: record.target,
     });
@@ -292,7 +293,7 @@ function reconcileClaudeBridge({ manifest, previousLock, nextLock, planner, cwd,
 
   if (!needsBridge) {
     if (previous?.managed === "symlink" && previous.owned) {
-      planner.delete(file, { owned: true, expectedTarget: previous.target });
+      planner.delete(file, { owned: true, expectedKind: "symlink", expectedTarget: previous.target });
     } else if (previous?.managed === "block") {
       const current = planner.state(file);
       if (current.kind === "file") {
@@ -301,7 +302,7 @@ function reconcileClaudeBridge({ manifest, previousLock, nextLock, planner, cwd,
           throw new ConflictError("Claude AGENTS.md bridge has local changes");
         }
         const result = removeClaudeBridge(current.content);
-        if (!result && previous.created) planner.delete(file, { owned: true });
+        if (!result && previous.created) planner.delete(file, { owned: true, expectedKind: "file" });
         else planner.write(file, result, { allowExisting: true });
       }
     }

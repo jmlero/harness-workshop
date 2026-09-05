@@ -66,6 +66,9 @@ export class Planner {
     if (!options.owned && !this.force) {
       throw new ConflictError(`Refusing to remove unmanaged ${this.label(absolute)}`);
     }
+    if (options.expectedKind && current.kind !== options.expectedKind && !this.force) {
+      throw new ConflictError(`Managed path changed type: ${this.label(absolute)} (expected ${options.expectedKind}, found ${current.kind})`);
+    }
     if (current.kind === "file" && options.expectedIntegrity
       && integrity(current.content) !== options.expectedIntegrity && !this.force) {
       throw new ConflictError(`Managed file has local changes: ${this.label(absolute)}`);
@@ -94,7 +97,14 @@ export class Planner {
   }
 
   apply() {
-    for (const operation of this.operations()) {
+    const operations = this.operations();
+    // Check the whole change set before writing any content or stored state.
+    for (const operation of operations) {
+      if (!sameState(operation.before, readState(operation.path))) {
+        throw new ConflictError(`Path changed after planning: ${operation.label}. Rerun the command to review current files.`);
+      }
+    }
+    for (const operation of operations) {
       const parent = path.dirname(operation.path);
       if (operation.after.kind === "write") {
         fs.mkdirSync(parent, { recursive: true });
